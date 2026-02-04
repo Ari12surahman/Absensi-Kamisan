@@ -1,0 +1,23 @@
+{
+  "name": "Mutaba'ah Digital",
+  "short_name": "Mutaba'ah",
+  "start_url": "https://yayasan-silau-hasanah.vercel.app/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0d9488",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://yayasan-silau-hasanah.vercel.app/Silau.jpeg",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://yayasan-silau-hasanah.vercel.app/Silau.jpeg",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
