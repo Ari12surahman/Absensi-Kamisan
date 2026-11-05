@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchDivisi, insertDivisi } from '@/lib/google-sheets';
-import { mockDb } from '@/lib/mock-db';
+import { fetchDivisi, insertDivisi, updateDivisi, deleteDivisi } from '@/lib/google-sheets';
 
 export async function GET() {
   try {
@@ -24,8 +23,8 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, data } = body;
-    mockDb.updateDivisi(id, data);
+    const { id, rowIndex, data } = body;
+    await updateDivisi(rowIndex || id, data);
     return NextResponse.json({ success: true, message: 'Data divisi berhasil diperbarui!' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
@@ -36,11 +35,11 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ success: false, message: 'ID diperlukan' }, { status: 400 });
-    mockDb.deleteDivisi(id);
+    const rowIndex = searchParams.get('rowIndex');
+    if (!id && !rowIndex) return NextResponse.json({ success: false, message: 'ID diperlukan' }, { status: 400 });
+    await deleteDivisi(rowIndex || id!);
     return NextResponse.json({ success: true, message: 'Divisi berhasil dihapus!' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
-

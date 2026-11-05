@@ -1285,7 +1285,7 @@ export default function SalAppPage() {
                                   type="button"
                                   onClick={async () => {
                                     if (confirm('Yakin ingin menghapus presensi ini?')) {
-                                      await fetch(`/api/absensi?id=${item.id}`, { method: 'DELETE' });
+                                      await fetch(`/api/absensi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
                                       showToast('Presensi berhasil dihapus!');
                                       fetchAbsensiData();
                                     }
@@ -1411,7 +1411,7 @@ export default function SalAppPage() {
                                 await fetch('/api/acara', {
                                   method: 'PUT',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ id: item.id, isHidden: !item.isHidden }),
+                                  body: JSON.stringify({ id: item.id, rowIndex: item.rowIndex, isHidden: !item.isHidden }),
                                 });
                                 showToast('Status acara diubah!');
                                 fetchAcaraData();
@@ -1433,7 +1433,7 @@ export default function SalAppPage() {
                               type="button"
                               onClick={async () => {
                                 if (confirm('Yakin ingin menghapus acara ini?')) {
-                                  await fetch(`/api/acara?id=${item.id}`, { method: 'DELETE' });
+                                  await fetch(`/api/acara?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
                                   showToast('Acara berhasil dihapus!');
                                   fetchAcaraData();
                                 }
@@ -1535,7 +1535,7 @@ export default function SalAppPage() {
                               type="button"
                               onClick={async () => {
                                 if (confirm('Yakin ingin menghapus laporan ini?')) {
-                                  await fetch(`/api/laporan?id=${item.id}`, { method: 'DELETE' });
+                                  await fetch(`/api/laporan?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
                                   showToast('Laporan berhasil dihapus!');
                                   fetchLaporanData();
                                 }
@@ -1627,7 +1627,7 @@ export default function SalAppPage() {
                               type="button"
                               onClick={async () => {
                                 if (confirm('Yakin ingin menghapus divisi ini?')) {
-                                  await fetch(`/api/divisi?id=${item.id}`, { method: 'DELETE' });
+                                  await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
                                   showToast('Divisi berhasil dihapus!');
                                   fetchDivisiData();
                                 }
@@ -1729,7 +1729,7 @@ export default function SalAppPage() {
                   await fetch('/api/divisi', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: modalDivisi.item.id, data: { namaDivisi: nama, keterangan: ket, status } }),
+                    body: JSON.stringify({ id: modalDivisi.item.id, rowIndex: modalDivisi.item.rowIndex, data: { namaDivisi: nama, keterangan: ket, status } }),
                   });
                 } else {
                   await fetch('/api/divisi', {
@@ -1821,7 +1821,7 @@ export default function SalAppPage() {
                   await fetch('/api/acara', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: modalAcara.item.id, namaAcara: nama, tanggalAcara: tgl, radius }),
+                    body: JSON.stringify({ id: modalAcara.item.id, rowIndex: modalAcara.item.rowIndex, namaAcara: nama, tanggalAcara: tgl, radius }),
                   });
                 } else {
                   await fetch('/api/acara', {
