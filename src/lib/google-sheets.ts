@@ -96,8 +96,7 @@ const addedDivisiList: DivisiItem[] = [];
 export async function fetchDivisi(): Promise<DivisiItem[]> {
   const isDeleted = (d: DivisiItem) =>
     deletedDivisiKeys.has(String(d.id)) ||
-    deletedDivisiKeys.has(String(d.rowIndex)) ||
-    deletedDivisiKeys.has((d.namaDivisi || '').trim().toLowerCase());
+    deletedDivisiKeys.has(String(d.rowIndex));
 
   const applyEdit = (d: DivisiItem): DivisiItem => {
     const edit =
@@ -178,6 +177,8 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
 export async function insertDivisi(data: Partial<DivisiItem>) {
   const newId = String(data.id || Date.now());
   const newRow = Number(data.rowIndex) || Date.now();
+  deletedDivisiKeys.delete(String(newId));
+  deletedDivisiKeys.delete(String(newRow));
   const newItem: DivisiItem = {
     rowIndex: newRow,
     id: newId,
@@ -238,7 +239,6 @@ export async function updateDivisi(rowIndex: number | string, data: Partial<Divi
 export async function deleteDivisi(rowIndex: number | string, id?: string, nama?: string) {
   if (rowIndex) deletedDivisiKeys.add(String(rowIndex));
   if (id) deletedDivisiKeys.add(String(id));
-  if (nama) deletedDivisiKeys.add(nama.trim().toLowerCase());
 
   const idx = addedDivisiList.findIndex(d =>
     String(d.id) === String(rowIndex) ||
@@ -266,8 +266,7 @@ const addedAcaraList: AcaraItem[] = [];
 export async function fetchAcara(): Promise<AcaraItem[]> {
   const isDeleted = (a: AcaraItem) =>
     deletedAcaraKeys.has(String(a.id)) ||
-    deletedAcaraKeys.has(String(a.rowIndex)) ||
-    deletedAcaraKeys.has((a.namaAcara || '').trim().toLowerCase());
+    deletedAcaraKeys.has(String(a.rowIndex));
 
   const applyEdit = (a: AcaraItem): AcaraItem => {
     const edit =
@@ -361,6 +360,8 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
 export async function insertAcara(data: Partial<AcaraItem>) {
   const newId = String(data.id || Date.now());
   const newRow = Number(data.rowIndex) || Date.now();
+  deletedAcaraKeys.delete(String(newId));
+  deletedAcaraKeys.delete(String(newRow));
   const newItem: AcaraItem = {
     rowIndex: newRow,
     id: newId,
@@ -451,7 +452,6 @@ export async function toggleStatusAcara(rowIndex: number | string, hideStatus: b
 export async function deleteAcara(rowIndex: number | string, id?: string, nama?: string) {
   if (rowIndex) deletedAcaraKeys.add(String(rowIndex));
   if (id) deletedAcaraKeys.add(String(id));
-  if (nama) deletedAcaraKeys.add(nama.trim().toLowerCase());
 
   const idx = addedAcaraList.findIndex(a =>
     String(a.id) === String(rowIndex) ||

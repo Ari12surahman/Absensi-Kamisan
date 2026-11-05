@@ -284,6 +284,32 @@ export default function SalAppPage() {
     } catch { }
   };
 
+  const removeStoredKey = (storageKey: string, idOrKey: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const list = getStoredList<string>(storageKey);
+      const filtered = list.filter(k => k !== idOrKey && k.toLowerCase() !== idOrKey.toLowerCase());
+      saveStoredList(storageKey, filtered);
+    } catch { }
+  };
+
+  // Sanitize stored deleted keys on load to purge any accidental event/divisi name strings
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const purgeNamesFromDeletedStore = (storageKey: string) => {
+      try {
+        const list = getStoredList<string>(storageKey);
+        // Only keep numeric strings or structured entity IDs (e.g. "17308...", "2", "ASATIDZ-...")
+        const cleaned = list.filter(k => /^\d+$/.test(k) || /^[A-Z0-9]+-\d+$/i.test(k));
+        saveStoredList(storageKey, cleaned);
+      } catch { }
+    };
+    purgeNamesFromDeletedStore('salapp_deleted_acara');
+    purgeNamesFromDeletedStore('salapp_deleted_divisi');
+    purgeNamesFromDeletedStore('salapp_deleted_laporan');
+    purgeNamesFromDeletedStore('salapp_deleted_absensi');
+  }, []);
+
   // Data Fetchers with Hybrid Local Sync
   const fetchAbsensiData = async () => {
     setLoadingAbsensi(true);
@@ -297,37 +323,38 @@ export default function SalAppPage() {
           getStoredList<[string, Partial<AbsensiRecord>]>('salapp_edited_absensi')
         );
 
-        let merged = (json.data || []).map((r: AbsensiRecord) => {
-          const edit = editedMap.get(String(r.id)) || editedMap.get(String(r.rowIndex));
-          return edit ? { ...r, ...edit } : r;
-        }).filter((r: AbsensiRecord) =>
-          !deletedKeys.includes(String(r.id)) &&
-          !deletedKeys.includes(String(r.rowIndex))
-        );
+        const isDeleted = (id?: string | number, rowIndex?: string | number) =>
+          (id && deletedKeys.includes(String(id))) ||
+          (rowIndex && deletedKeys.includes(String(rowIndex)));
+
+        const activeCustom = customAdded
+          .filter(r => !isDeleted(r.id, r.rowIndex))
+          .map(r => {
+            const edit = editedMap.get(String(r.id)) || editedMap.get(String(r.rowIndex));
+            return edit ? { ...r, ...edit } : r;
+          });
+
+        const serverMerged = (json.data || [])
+          .filter((r: AbsensiRecord) => !isDeleted(r.id, r.rowIndex))
+          .map((r: AbsensiRecord) => {
+            const edit = editedMap.get(String(r.id)) || editedMap.get(String(r.rowIndex));
+            return edit ? { ...r, ...edit } : r;
+          });
 
         const seen = new Set<string>();
-        const dedupedMerged: AbsensiRecord[] = [];
-        for (const item of merged) {
+        const finalAbsensiList: AbsensiRecord[] = [];
+
+        for (const item of [...activeCustom, ...serverMerged]) {
           const idKey = String(item.id || item.rowIndex);
           const contentKey = `${item.acara}_${item.nama}_${item.waktu}`.toLowerCase();
           if (!seen.has(idKey) && !seen.has(contentKey)) {
             seen.add(idKey);
             seen.add(contentKey);
-            dedupedMerged.push(item);
+            finalAbsensiList.push(item);
           }
         }
 
-        const uniqueCustom = customAdded.filter(r => {
-          const idKey = String(r.id || r.rowIndex);
-          const contentKey = `${r.acara}_${r.nama}_${r.waktu}`.toLowerCase();
-          if (seen.has(idKey) || seen.has(contentKey)) return false;
-          if (deletedKeys.includes(idKey)) return false;
-          seen.add(idKey);
-          seen.add(contentKey);
-          return true;
-        });
-
-        setAbsensiList([...uniqueCustom, ...dedupedMerged]);
+        setAbsensiList(finalAbsensiList);
       }
     } catch (e) {
       console.error(e);
@@ -348,50 +375,44 @@ export default function SalAppPage() {
           getStoredList<[string, Partial<AcaraItem>]>('salapp_edited_acara')
         );
 
-        let merged = (json.data || []).map((a: AcaraItem) => {
-          const edit =
-            editedMap.get(String(a.id)) ||
-            editedMap.get(String(a.rowIndex)) ||
-            (a.namaAcara ? editedMap.get(a.namaAcara.trim().toLowerCase()) : undefined);
-          return edit ? { ...a, ...edit } : a;
-        }).filter((a: AcaraItem) =>
-          !deletedKeys.includes(String(a.id)) &&
-          !deletedKeys.includes(String(a.rowIndex)) &&
-          !deletedKeys.includes((a.namaAcara || '').trim().toLowerCase())
-        );
+        const isDeleted = (id?: string | number, rowIndex?: string | number) =>
+          (id && deletedKeys.includes(String(id))) ||
+          (rowIndex && deletedKeys.includes(String(rowIndex)));
 
-        // Deduplicate merged items: keep only unique ID and unique lowercase namaAcara
+        const activeCustom = customAdded
+          .filter(a => !isDeleted(a.id, a.rowIndex))
+          .map(a => {
+            const edit =
+              editedMap.get(String(a.id)) ||
+              editedMap.get(String(a.rowIndex)) ||
+              (a.namaAcara ? editedMap.get(a.namaAcara.trim().toLowerCase()) : undefined);
+            return edit ? { ...a, ...edit } : a;
+          });
+
+        const serverMerged = (json.data || [])
+          .filter((a: AcaraItem) => !isDeleted(a.id, a.rowIndex))
+          .map((a: AcaraItem) => {
+            const edit =
+              editedMap.get(String(a.id)) ||
+              editedMap.get(String(a.rowIndex)) ||
+              (a.namaAcara ? editedMap.get(a.namaAcara.trim().toLowerCase()) : undefined);
+            return edit ? { ...a, ...edit } : a;
+          });
+
         const seen = new Set<string>();
-        const dedupedMerged: AcaraItem[] = [];
-        for (const item of merged) {
+        const finalAcaraList: AcaraItem[] = [];
+
+        for (const item of [...activeCustom, ...serverMerged]) {
           const idKey = String(item.id || item.rowIndex);
           const nameKey = (item.namaAcara || '').trim().toLowerCase();
           if (!seen.has(idKey) && (!nameKey || !seen.has('name_' + nameKey))) {
             seen.add(idKey);
             if (nameKey) seen.add('name_' + nameKey);
-            dedupedMerged.push(item);
+            finalAcaraList.push(item);
           }
         }
 
-        const uniqueCustom = customAdded.filter(a => {
-          const idKey = String(a.id || a.rowIndex);
-          const nameKey = (a.namaAcara || '').trim().toLowerCase();
-          if (seen.has(idKey) || (nameKey && seen.has('name_' + nameKey))) return false;
-          if (deletedKeys.includes(idKey) || (nameKey && deletedKeys.includes(nameKey))) return false;
-          seen.add(idKey);
-          if (nameKey) seen.add('name_' + nameKey);
-          return true;
-        });
-
-        // Clean up salapp_custom_acara in localStorage so it only contains items not already in server
-        const serverNames = new Set(dedupedMerged.map(a => (a.namaAcara || '').trim().toLowerCase()));
-        const serverIds = new Set(dedupedMerged.map(a => String(a.id || a.rowIndex)));
-        const cleanedCustom = customAdded.filter(
-          a => !serverIds.has(String(a.id || a.rowIndex)) && !serverNames.has((a.namaAcara || '').trim().toLowerCase())
-        );
-        saveStoredList('salapp_custom_acara', cleanedCustom);
-
-        setAcaraList([...uniqueCustom, ...dedupedMerged]);
+        setAcaraList(finalAcaraList);
       }
     } catch (e) {
       console.error(e);
@@ -412,50 +433,44 @@ export default function SalAppPage() {
           getStoredList<[string, Partial<DivisiItem>]>('salapp_edited_divisi')
         );
 
-        let merged = (json.data || []).map((d: DivisiItem) => {
-          const edit =
-            editedMap.get(String(d.id)) ||
-            editedMap.get(String(d.rowIndex)) ||
-            (d.namaDivisi ? editedMap.get(d.namaDivisi.trim().toLowerCase()) : undefined);
-          return edit ? { ...d, ...edit } : d;
-        }).filter((d: DivisiItem) =>
-          !deletedKeys.includes(String(d.id)) &&
-          !deletedKeys.includes(String(d.rowIndex)) &&
-          !deletedKeys.includes((d.namaDivisi || '').trim().toLowerCase())
-        );
+        const isDeleted = (id?: string | number, rowIndex?: string | number) =>
+          (id && deletedKeys.includes(String(id))) ||
+          (rowIndex && deletedKeys.includes(String(rowIndex)));
 
-        // Deduplicate merged items: keep only unique ID and unique lowercase namaDivisi
+        const activeCustom = customAdded
+          .filter(d => !isDeleted(d.id, d.rowIndex))
+          .map(d => {
+            const edit =
+              editedMap.get(String(d.id)) ||
+              editedMap.get(String(d.rowIndex)) ||
+              (d.namaDivisi ? editedMap.get(d.namaDivisi.trim().toLowerCase()) : undefined);
+            return edit ? { ...d, ...edit } : d;
+          });
+
+        const serverMerged = (json.data || [])
+          .filter((d: DivisiItem) => !isDeleted(d.id, d.rowIndex))
+          .map((d: DivisiItem) => {
+            const edit =
+              editedMap.get(String(d.id)) ||
+              editedMap.get(String(d.rowIndex)) ||
+              (d.namaDivisi ? editedMap.get(d.namaDivisi.trim().toLowerCase()) : undefined);
+            return edit ? { ...d, ...edit } : d;
+          });
+
         const seen = new Set<string>();
-        const dedupedMerged: DivisiItem[] = [];
-        for (const item of merged) {
+        const finalDivisiList: DivisiItem[] = [];
+
+        for (const item of [...activeCustom, ...serverMerged]) {
           const idKey = String(item.id || item.rowIndex);
           const nameKey = (item.namaDivisi || '').trim().toLowerCase();
           if (!seen.has(idKey) && (!nameKey || !seen.has('name_' + nameKey))) {
             seen.add(idKey);
             if (nameKey) seen.add('name_' + nameKey);
-            dedupedMerged.push(item);
+            finalDivisiList.push(item);
           }
         }
 
-        const uniqueCustom = customAdded.filter(d => {
-          const idKey = String(d.id || d.rowIndex);
-          const nameKey = (d.namaDivisi || '').trim().toLowerCase();
-          if (seen.has(idKey) || (nameKey && seen.has('name_' + nameKey))) return false;
-          if (deletedKeys.includes(idKey) || (nameKey && deletedKeys.includes(nameKey))) return false;
-          seen.add(idKey);
-          if (nameKey) seen.add('name_' + nameKey);
-          return true;
-        });
-
-        // Clean up salapp_custom_divisi in localStorage
-        const serverNames = new Set(dedupedMerged.map(d => (d.namaDivisi || '').trim().toLowerCase()));
-        const serverIds = new Set(dedupedMerged.map(d => String(d.id || d.rowIndex)));
-        const cleanedCustom = customAdded.filter(
-          d => !serverIds.has(String(d.id || d.rowIndex)) && !serverNames.has((d.namaDivisi || '').trim().toLowerCase())
-        );
-        saveStoredList('salapp_custom_divisi', cleanedCustom);
-
-        setDivisiList([...uniqueCustom, ...dedupedMerged]);
+        setDivisiList(finalDivisiList);
       }
     } catch (e) {
       console.error(e);
@@ -476,37 +491,38 @@ export default function SalAppPage() {
           getStoredList<[string, Partial<LaporanItem>]>('salapp_edited_laporan')
         );
 
-        let merged = (json.data || []).map((l: LaporanItem) => {
-          const edit = editedMap.get(String(l.id)) || editedMap.get(String(l.rowIndex));
-          return edit ? { ...l, ...edit } : l;
-        }).filter((l: LaporanItem) =>
-          !deletedKeys.includes(String(l.id)) &&
-          !deletedKeys.includes(String(l.rowIndex))
-        );
+        const isDeleted = (id?: string | number, rowIndex?: string | number) =>
+          (id && deletedKeys.includes(String(id))) ||
+          (rowIndex && deletedKeys.includes(String(rowIndex)));
+
+        const activeCustom = customAdded
+          .filter(l => !isDeleted(l.id, l.rowIndex))
+          .map(l => {
+            const edit = editedMap.get(String(l.id)) || editedMap.get(String(l.rowIndex));
+            return edit ? { ...l, ...edit } : l;
+          });
+
+        const serverMerged = (json.data || [])
+          .filter((l: LaporanItem) => !isDeleted(l.id, l.rowIndex))
+          .map((l: LaporanItem) => {
+            const edit = editedMap.get(String(l.id)) || editedMap.get(String(l.rowIndex));
+            return edit ? { ...l, ...edit } : l;
+          });
 
         const seen = new Set<string>();
-        const dedupedMerged: LaporanItem[] = [];
-        for (const item of merged) {
+        const finalLaporanList: LaporanItem[] = [];
+
+        for (const item of [...activeCustom, ...serverMerged]) {
           const idKey = String(item.id || item.rowIndex);
           const contentKey = `${item.divisi}_${item.namaPelapor}_${item.periode}`.toLowerCase();
           if (!seen.has(idKey) && !seen.has(contentKey)) {
             seen.add(idKey);
             seen.add(contentKey);
-            dedupedMerged.push(item);
+            finalLaporanList.push(item);
           }
         }
 
-        const uniqueCustom = customAdded.filter(l => {
-          const idKey = String(l.id || l.rowIndex);
-          const contentKey = `${l.divisi}_${l.namaPelapor}_${l.periode}`.toLowerCase();
-          if (seen.has(idKey) || seen.has(contentKey)) return false;
-          if (deletedKeys.includes(idKey)) return false;
-          seen.add(idKey);
-          seen.add(contentKey);
-          return true;
-        });
-
-        setLaporanList([...uniqueCustom, ...dedupedMerged]);
+        setLaporanList(finalLaporanList);
       }
     } catch (e) {
       console.error(e);
@@ -555,19 +571,22 @@ export default function SalAppPage() {
         addStoredKey('salapp_deleted_acara', key);
         if (item.id) addStoredKey('salapp_deleted_acara', String(item.id));
         if (item.rowIndex) addStoredKey('salapp_deleted_acara', String(item.rowIndex));
-        if (item.namaAcara) addStoredKey('salapp_deleted_acara', item.namaAcara.trim().toLowerCase());
 
         const customList = getStoredList<AcaraItem>('salapp_custom_acara').filter(
-          a => String(a.id) !== key && String(a.rowIndex) !== key && a.namaAcara.toLowerCase() !== item.namaAcara.toLowerCase()
+          a =>
+            String(a.id) !== key &&
+            String(a.rowIndex) !== key &&
+            !(item.id && String(a.id) === String(item.id)) &&
+            !(item.rowIndex && String(a.rowIndex) === String(item.rowIndex))
         );
         saveStoredList('salapp_custom_acara', customList);
 
         setAcaraList(prev =>
           prev.filter(
             a =>
-              (item.id ? a.id !== item.id : true) &&
-              (item.rowIndex ? a.rowIndex !== item.rowIndex : true) &&
-              a.namaAcara !== item.namaAcara
+              String(a.id || a.rowIndex) !== key &&
+              !(item.id && String(a.id) === String(item.id)) &&
+              !(item.rowIndex && String(a.rowIndex) === String(item.rowIndex))
           )
         );
 
@@ -646,16 +665,22 @@ export default function SalAppPage() {
         addStoredKey('salapp_deleted_divisi', key);
         if (item.id) addStoredKey('salapp_deleted_divisi', String(item.id));
         if (item.rowIndex) addStoredKey('salapp_deleted_divisi', String(item.rowIndex));
-        if (item.namaDivisi) addStoredKey('salapp_deleted_divisi', item.namaDivisi.trim().toLowerCase());
 
         const customList = getStoredList<DivisiItem>('salapp_custom_divisi').filter(
-          d => String(d.id) !== key && String(d.rowIndex) !== key && d.namaDivisi.toLowerCase() !== item.namaDivisi.toLowerCase()
+          d =>
+            String(d.id) !== key &&
+            String(d.rowIndex) !== key &&
+            !(item.id && String(d.id) === String(item.id)) &&
+            !(item.rowIndex && String(d.rowIndex) === String(item.rowIndex))
         );
         saveStoredList('salapp_custom_divisi', customList);
 
         setDivisiList(prev =>
           prev.filter(
-            d => (item.id ? d.id !== item.id : true) && (item.rowIndex ? d.rowIndex !== item.rowIndex : true) && d.namaDivisi !== item.namaDivisi
+            d =>
+              String(d.id || d.rowIndex) !== key &&
+              !(item.id && String(d.id) === String(item.id)) &&
+              !(item.rowIndex && String(d.rowIndex) === String(item.rowIndex))
           )
         );
 
@@ -2578,21 +2603,22 @@ export default function SalAppPage() {
                     status: status as any,
                   };
 
+                  removeStoredKey('salapp_deleted_divisi', newId);
+                  removeStoredKey('salapp_deleted_divisi', String(newRow));
+                  removeStoredKey('salapp_deleted_divisi', nama.trim().toLowerCase());
+
                   setDivisiList(prev => {
-                    const exists = prev.some(
-                      d => (d.namaDivisi && d.namaDivisi.trim().toLowerCase() === nama.toLowerCase()) || String(d.id) === newId
+                    const filtered = prev.filter(
+                      d => String(d.id) !== newId && (d.namaDivisi || '').trim().toLowerCase() !== nama.toLowerCase()
                     );
-                    return exists ? prev : [newItem, ...prev];
+                    return [newItem, ...filtered];
                   });
 
-                  const customList = getStoredList<DivisiItem>('salapp_custom_divisi');
-                  const existsCustom = customList.some(
-                    d => d.namaDivisi && d.namaDivisi.trim().toLowerCase() === nama.toLowerCase()
+                  const customList = getStoredList<DivisiItem>('salapp_custom_divisi').filter(
+                    d => String(d.id) !== newId && (d.namaDivisi || '').trim().toLowerCase() !== nama.toLowerCase()
                   );
-                  if (!existsCustom) {
-                    customList.unshift(newItem);
-                    saveStoredList('salapp_custom_divisi', customList);
-                  }
+                  customList.unshift(newItem);
+                  saveStoredList('salapp_custom_divisi', customList);
 
                   await fetch('/api/divisi', {
                     method: 'POST',
@@ -2732,21 +2758,22 @@ export default function SalAppPage() {
                     ...payload,
                   };
 
+                  removeStoredKey('salapp_deleted_acara', newId);
+                  removeStoredKey('salapp_deleted_acara', String(newRow));
+                  removeStoredKey('salapp_deleted_acara', nama.trim().toLowerCase());
+
                   setAcaraList(prev => {
-                    const exists = prev.some(
-                      a => (a.namaAcara && a.namaAcara.trim().toLowerCase() === nama.toLowerCase()) || String(a.id) === newId
+                    const filtered = prev.filter(
+                      a => String(a.id) !== newId && (a.namaAcara || '').trim().toLowerCase() !== nama.toLowerCase()
                     );
-                    return exists ? prev : [newItem, ...prev];
+                    return [newItem, ...filtered];
                   });
 
-                  const customList = getStoredList<AcaraItem>('salapp_custom_acara');
-                  const existsCustom = customList.some(
-                    a => a.namaAcara && a.namaAcara.trim().toLowerCase() === nama.toLowerCase()
+                  const customList = getStoredList<AcaraItem>('salapp_custom_acara').filter(
+                    a => String(a.id) !== newId && (a.namaAcara || '').trim().toLowerCase() !== nama.toLowerCase()
                   );
-                  if (!existsCustom) {
-                    customList.unshift(newItem);
-                    saveStoredList('salapp_custom_acara', customList);
-                  }
+                  customList.unshift(newItem);
+                  saveStoredList('salapp_custom_acara', customList);
 
                   await fetch('/api/acara', {
                     method: 'POST',
