@@ -461,7 +461,7 @@ export default function SalAppPage() {
   const izinSakitCount = absensiList.filter(a => ['izin', 'sakit'].includes(a.status?.toLowerCase())).length;
 
   return (
-    <div className="min-h-screen bg-background text-on-surface flex flex-col relative selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-background text-on-surface flex flex-col relative selection:bg-primary selection:text-white w-full max-w-full overflow-x-hidden">
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] transition-all animate-bounce">
@@ -486,7 +486,7 @@ export default function SalAppPage() {
       {/* VIEW: PORTAL PUBLIK ASATIDZ                         */}
       {/* ==================================================== */}
       {currentView === 'portal' && (
-        <div className="flex flex-col flex-1 w-full">
+        <div className="flex flex-col flex-1 w-full max-w-full overflow-x-hidden">
           {/* Top Clean App Header */}
           <header className="fixed top-0 w-full z-40 bg-surface-container-lowest/90 backdrop-blur-xl border-b border-surface-container-high/60 shadow-xs pt-safe">
             <div className="h-16 px-4 flex items-center justify-between gap-3 max-w-lg mx-auto">
@@ -1066,9 +1066,9 @@ export default function SalAppPage() {
       {/* VIEW: ADMIN DASHBOARD (DESKTOP & MOBILE)             */}
       {/* ==================================================== */}
       {currentView === 'admin' && (
-        <div className="min-h-screen bg-background flex flex-col">
+        <div className="min-h-screen bg-background flex flex-col w-full max-w-full overflow-x-hidden">
           {/* Admin Fixed Top Header (Clean, Spacious, No Duplicate Tabs) */}
-          <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-surface-container-high shadow-xs h-16">
+          <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-surface-container-high shadow-xs h-16 w-full max-w-full">
             <div className="w-full px-4 sm:px-6 lg:px-8 h-full flex justify-between items-center">
               {/* Brand Logo & Title */}
               <div className="flex items-center gap-3">
@@ -1195,12 +1195,12 @@ export default function SalAppPage() {
           </aside>
 
           {/* Admin Main Workspace (Offset for Desktop Sidebar) */}
-          <main className="w-full lg:pl-64 pt-20 pb-24 lg:pb-12 px-4 sm:px-6 lg:px-8 space-y-6">
+          <main className="w-full max-w-full lg:pl-64 pt-20 pb-24 lg:pb-12 px-3 sm:px-6 lg:px-8 space-y-6 overflow-x-hidden">
             {/* ==================================================== */}
             {/* TAB 1: DATA PRESENSI                                */}
             {/* ==================================================== */}
             {adminTab === 'absensi' && (
-              <div className="space-y-6">
+              <div className="space-y-6 w-full max-w-full">
                 {/* Header Section */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
@@ -1335,8 +1335,106 @@ export default function SalAppPage() {
                   </div>
                 </div>
 
-                {/* Paginated Table Card */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto hide-scrollbar">
+                {/* MOBILE VIEW: Clean Vertical Cards (block md:hidden) - Zero Horizontal Scroll */}
+                <div className="space-y-3 block md:hidden">
+                  {paginatedAbsensi.length === 0 ? (
+                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                      {loadingAbsensi ? 'Memuat data presensi...' : 'Tidak ada data presensi yang sesuai.'}
+                    </div>
+                  ) : (
+                    paginatedAbsensi.map((item, idx) => {
+                      const actualIdx = (pageAbsensi - 1) * PAGE_SIZE + idx + 1;
+                      const initials = (item.nama || 'AS')
+                        .split(' ')
+                        .map(n => n[0])
+                        .slice(0, 2)
+                        .join('')
+                        .toUpperCase();
+
+                      return (
+                        <div
+                          key={item.id || idx}
+                          className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                        >
+                          {/* Card Header: Initials + Name + ID + Status Badge */}
+                          <div className="flex items-start justify-between gap-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                {initials}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.nama}</h3>
+                                <span className="text-[10px] text-on-surface-variant font-mono uppercase mt-0.5">
+                                  #{formatIndex(actualIdx)} &bull; ID: ASATIDZ-{item.id}
+                                </span>
+                              </div>
+                            </div>
+                            <span
+                              className={`h-6 px-2.5 rounded-full text-[10px] font-bold flex items-center shrink-0 uppercase tracking-wide ${
+                                item.status?.toLowerCase() === 'hadir'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : item.status?.toLowerCase() === 'izin'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              }`}
+                            >
+                              {item.status?.toUpperCase()}
+                            </span>
+                          </div>
+
+                          {/* Card Body: Agenda, Time & Keterangan */}
+                          <div className="bg-surface-container-low/60 rounded-2xl p-3 flex flex-col gap-2 text-xs">
+                            <div className="flex items-center gap-2 text-on-surface font-semibold text-xs truncate">
+                              <Calendar size={14} className="text-primary shrink-0" />
+                              <span className="truncate">{item.acara}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-on-surface-variant">
+                              <div className="flex items-center gap-1.5 font-mono">
+                                <Clock size={13} className="shrink-0 text-outline" />
+                                <span>{item.waktu || '-'}</span>
+                              </div>
+                              {item.keterangan && (
+                                <div className="flex items-center gap-1 text-on-surface-variant truncate max-w-[55%]">
+                                  <MapPin size={13} className="shrink-0 text-emerald-600" />
+                                  <span className="truncate">{item.keterangan}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Footer: Action Buttons */}
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-surface-container-high/40">
+                            <button
+                              type="button"
+                              onClick={() => setModalEditAbsen({ open: true, item })}
+                              className="px-3.5 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                            >
+                              <Edit size={14} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (confirm('Yakin ingin menghapus presensi ini?')) {
+                                  await fetch(`/api/absensi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+                                  showToast('Presensi berhasil dihapus!');
+                                  fetchAbsensiData();
+                                }
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                            >
+                              <Trash2 size={14} />
+                              <span>Hapus</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* DESKTOP VIEW: Paginated Table (hidden md:block) */}
+                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
@@ -1426,39 +1524,39 @@ export default function SalAppPage() {
                       )}
                     </tbody>
                   </table>
+                </div>
 
-                  {/* Pagination Bar */}
-                  <div className="px-5 py-3.5 bg-surface-container-low/70 border-t border-surface-container-high flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                    <div className="text-on-surface-variant font-medium text-center sm:text-left">
-                      Menampilkan{' '}
-                      <span className="font-bold text-on-surface">
-                        {filteredAbsensi.length > 0 ? (pageAbsensi - 1) * PAGE_SIZE + 1 : 0} -{' '}
-                        {Math.min(pageAbsensi * PAGE_SIZE, filteredAbsensi.length)}
-                      </span>{' '}
-                      dari <span className="font-bold text-on-surface">{filteredAbsensi.length}</span> data (Hal. {pageAbsensi}/
-                      {Math.max(1, Math.ceil(filteredAbsensi.length / PAGE_SIZE))})
-                    </div>
+                {/* Common Pagination Bar (Mobile & Desktop) */}
+                <div className="px-5 py-3.5 bg-surface-container-lowest rounded-2xl border border-surface-container-high shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <div className="text-on-surface-variant font-medium text-center sm:text-left">
+                    Menampilkan{' '}
+                    <span className="font-bold text-on-surface">
+                      {filteredAbsensi.length > 0 ? (pageAbsensi - 1) * PAGE_SIZE + 1 : 0} -{' '}
+                      {Math.min(pageAbsensi * PAGE_SIZE, filteredAbsensi.length)}
+                    </span>{' '}
+                    dari <span className="font-bold text-on-surface">{filteredAbsensi.length}</span> data (Hal. {pageAbsensi}/
+                    {Math.max(1, Math.ceil(filteredAbsensi.length / PAGE_SIZE))})
+                  </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setPageAbsensi(p => Math.max(1, p - 1))}
-                        disabled={pageAbsensi <= 1}
-                        className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
-                      >
-                        <ChevronLeft size={16} />
-                        <span className="hidden sm:inline">Sebelumnya</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPageAbsensi(p => Math.min(Math.ceil(filteredAbsensi.length / PAGE_SIZE), p + 1))}
-                        disabled={pageAbsensi >= Math.ceil(filteredAbsensi.length / PAGE_SIZE)}
-                        className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
-                      >
-                        <span className="hidden sm:inline">Berikutnya</span>
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPageAbsensi(p => Math.max(1, p - 1))}
+                      disabled={pageAbsensi <= 1}
+                      className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
+                    >
+                      <ChevronLeft size={16} />
+                      <span className="hidden sm:inline">Sebelumnya</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPageAbsensi(p => Math.min(Math.ceil(filteredAbsensi.length / PAGE_SIZE), p + 1))}
+                      disabled={pageAbsensi >= Math.ceil(filteredAbsensi.length / PAGE_SIZE)}
+                      className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
+                    >
+                      <span className="hidden sm:inline">Berikutnya</span>
+                      <ChevronRight size={16} />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1468,7 +1566,7 @@ export default function SalAppPage() {
             {/* TAB 2: MANAJEMEN ACARA                              */}
             {/* ==================================================== */}
             {adminTab === 'acara' && (
-              <div className="space-y-6">
+              <div className="space-y-6 w-full max-w-full">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
                     <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Manajemen Agenda Acara</h2>
@@ -1495,8 +1593,92 @@ export default function SalAppPage() {
                   </div>
                 </div>
 
-                {/* Table Acara */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto hide-scrollbar">
+                {/* MOBILE VIEW: Cards for Acara (block md:hidden) */}
+                <div className="space-y-3 block md:hidden">
+                  {paginatedAcara.length === 0 ? (
+                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                      {loadingAcara ? 'Memuat data acara...' : 'Tidak ada agenda acara terdaftar.'}
+                    </div>
+                  ) : (
+                    paginatedAcara.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                      >
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-2xl bg-surface-container-low text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                              <Calendar size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.namaAcara}</h3>
+                              <span className="text-[11px] text-on-surface-variant font-medium mt-0.5 block">{item.tanggalAcara}</span>
+                            </div>
+                          </div>
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wide ${
+                              item.isHidden
+                                ? 'bg-surface-container text-on-surface-variant'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}
+                          >
+                            {item.isHidden ? 'DISEMBUNYIKAN' : 'TAMPIL'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-on-surface-variant pt-2 border-t border-surface-container-low">
+                          <span className="flex items-center gap-1 font-medium text-[11px]">
+                            <MapPin size={13} className="text-primary" />
+                            Toleransi: {item.radius || 150}m
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await fetch('/api/acara', {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ id: item.id, rowIndex: item.rowIndex, isHidden: !item.isHidden }),
+                                });
+                                showToast('Status acara diubah!');
+                                fetchAcaraData();
+                              }}
+                              className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition active:scale-95"
+                              title={item.isHidden ? 'Tampilkan' : 'Sembunyikan'}
+                            >
+                              {item.isHidden ? <Eye size={15} /> : <EyeOff size={15} />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setModalAcara({ open: true, item })}
+                              className="p-2 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white transition active:scale-95"
+                              title="Edit Acara"
+                            >
+                              <Edit size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (confirm('Yakin ingin menghapus acara ini?')) {
+                                  await fetch(`/api/acara?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+                                  showToast('Acara berhasil dihapus!');
+                                  fetchAcaraData();
+                                }
+                              }}
+                              className="p-2 rounded-xl bg-error-container text-error hover:bg-red-200 transition active:scale-95"
+                              title="Hapus Acara"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* DESKTOP VIEW: Table Acara (hidden md:block) */}
+                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
@@ -1580,7 +1762,7 @@ export default function SalAppPage() {
             {/* TAB 3: LAPORAN DIVISI                               */}
             {/* ==================================================== */}
             {adminTab === 'laporan' && (
-              <div className="space-y-6">
+              <div className="space-y-6 w-full max-w-full">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
                     <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Laporan Divisi Masuk</h2>
@@ -1608,8 +1790,82 @@ export default function SalAppPage() {
                   </div>
                 </div>
 
-                {/* Table Laporan */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto hide-scrollbar">
+                {/* MOBILE VIEW: Cards for Laporan (block md:hidden) */}
+                <div className="space-y-3 block md:hidden">
+                  {paginatedLaporan.length === 0 ? (
+                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                      {loadingLaporan ? 'Memuat data laporan...' : 'Tidak ada laporan divisi masuk.'}
+                    </div>
+                  ) : (
+                    paginatedLaporan.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                      >
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                              <FileText size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-bold text-primary truncate leading-tight">{item.divisi}</h3>
+                              <p className="text-[11px] text-on-surface font-semibold mt-0.5 truncate">
+                                {item.namaPelapor} &bull; <span className="text-on-surface-variant font-normal">{item.periode}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-mono font-semibold text-primary text-[10px] shrink-0">
+                            {item.laporanDana || 'Rp 0'}
+                          </span>
+                        </div>
+
+                        {item.hasilUsaha && (
+                          <div className="bg-surface-container-low/50 p-3 rounded-2xl border border-surface-container-high/40">
+                            <p className="text-xs text-on-surface line-clamp-2 leading-relaxed">
+                              {item.hasilUsaha}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-surface-container-low">
+                          <button
+                            type="button"
+                            onClick={() => setModalDetailLaporan({ open: true, item })}
+                            className="px-3 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                          >
+                            <Eye size={14} />
+                            <span>Detail</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setModalEditLaporan({ open: true, item })}
+                            className="px-3 py-1.5 rounded-xl bg-surface-container text-on-surface-variant hover:text-primary text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                          >
+                            <Edit size={14} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (confirm('Yakin ingin menghapus laporan ini?')) {
+                                await fetch(`/api/laporan?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+                                showToast('Laporan berhasil dihapus!');
+                                fetchLaporanData();
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                          >
+                            <Trash2 size={14} />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* DESKTOP VIEW: Table Laporan (hidden md:block) */}
+                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
@@ -1682,7 +1938,7 @@ export default function SalAppPage() {
             {/* TAB 4: KELOLA DIVISI                                */}
             {/* ==================================================== */}
             {adminTab === 'divisi' && (
-              <div className="space-y-6">
+              <div className="space-y-6 w-full max-w-full">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
                     <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Kelola Struktur Divisi</h2>
@@ -1709,8 +1965,80 @@ export default function SalAppPage() {
                   </div>
                 </div>
 
-                {/* Table Divisi */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto hide-scrollbar">
+                {/* MOBILE VIEW: Cards for Divisi (block md:hidden) */}
+                <div className="space-y-3 block md:hidden">
+                  {paginatedDivisi.length === 0 ? (
+                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                      {loadingDivisi ? 'Memuat data divisi...' : 'Tidak ada divisi terdaftar.'}
+                    </div>
+                  ) : (
+                    paginatedDivisi.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                      >
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-2xl bg-surface-container-low text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                              <Building size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.namaDivisi}</h3>
+                              <span className="text-[10px] text-on-surface-variant font-mono mt-0.5 block">
+                                #{formatIndex(idx + 1)}
+                              </span>
+                            </div>
+                          </div>
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wide ${
+                              item.status === 'Aktif' || !item.status
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-surface-container text-on-surface-variant'
+                            }`}
+                          >
+                            {item.status || 'Aktif'}
+                          </span>
+                        </div>
+
+                        {item.keterangan && (
+                          <div className="bg-surface-container-low/50 p-3 rounded-2xl border border-surface-container-high/40">
+                            <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
+                              {item.keterangan}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-surface-container-low">
+                          <button
+                            type="button"
+                            onClick={() => setModalDivisi({ open: true, item })}
+                            className="px-3 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                          >
+                            <Edit size={14} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (confirm('Yakin ingin menghapus divisi ini?')) {
+                                await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+                                showToast('Divisi berhasil dihapus!');
+                                fetchDivisiData();
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                          >
+                            <Trash2 size={14} />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* DESKTOP VIEW: Table Divisi (hidden md:block) */}
+                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
