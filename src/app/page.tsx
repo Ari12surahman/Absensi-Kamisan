@@ -359,15 +359,47 @@ export default function SalAppPage() {
             return edit ? { ...r, ...edit } : r;
           });
 
+        // Clean up salapp_custom_absensi if records are already confirmed in serverMerged
+        const serverKeys = new Set<string>();
+        for (const s of serverMerged) {
+          if (s.id) serverKeys.add(String(s.id));
+          if (s.rowIndex) serverKeys.add(String(s.rowIndex));
+          const sDate = (s.waktu || '').split(' ')[0].trim();
+          if (s.acara && s.nama && sDate) {
+            serverKeys.add(`${s.acara.trim()}_${s.nama.trim()}_${sDate}`.toLowerCase());
+          }
+        }
+
+        const remainingCustom = customAdded.filter(r => {
+          if (isDeleted(r.id, r.rowIndex)) return false;
+          const rDate = (r.waktu || '').split(' ')[0].trim();
+          const rKey = `${(r.acara || '').trim()}_${(r.nama || '').trim()}_${rDate}`.toLowerCase();
+          if (
+            (r.id && serverKeys.has(String(r.id))) ||
+            (r.rowIndex && serverKeys.has(String(r.rowIndex))) ||
+            (rKey && serverKeys.has(rKey))
+          ) {
+            return false;
+          }
+          return true;
+        });
+
+        if (remainingCustom.length !== customAdded.length) {
+          saveStoredList('salapp_custom_absensi', remainingCustom);
+        }
+
         const seen = new Set<string>();
         const finalAbsensiList: AbsensiRecord[] = [];
 
-        for (const item of [...activeCustom, ...serverMerged]) {
+        // Authoritative server data first, then any pending local custom records
+        for (const item of [...serverMerged, ...activeCustom]) {
           const idKey = String(item.id || item.rowIndex);
-          const contentKey = `${item.acara}_${item.nama}_${item.waktu}`.toLowerCase();
-          if (!seen.has(idKey) && !seen.has(contentKey)) {
+          const datePart = (item.waktu || '').split(' ')[0].trim();
+          const personAcaraKey = `${(item.acara || '').trim()}_${(item.nama || '').trim()}_${datePart}`.toLowerCase();
+
+          if (!seen.has(idKey) && (!personAcaraKey || !seen.has(personAcaraKey))) {
             seen.add(idKey);
-            seen.add(contentKey);
+            if (personAcaraKey) seen.add(personAcaraKey);
             finalAbsensiList.push(item);
           }
         }
@@ -740,33 +772,59 @@ export default function SalAppPage() {
     }
 
     setSubmittingAbsen(true);
+    const clientGeneratedId = Date.now().toString();
+    const now = new Date();
+    const formattedDate =
+      now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' }) +
+      ' ' +
+      now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' });
+    const computedKet = formAbsenKet.trim() || (locationDistance !== null ? `Jarak GPS: ${formatDistance(locationDistance)}` : 'Hadir Tepat Waktu');
+
     try {
       const res = await fetch('/api/absensi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: clientGeneratedId,
+          waktu: formattedDate,
           acara: formAbsenAcara,
           nama: formAbsenNama.trim(),
           status: formAbsenStatus,
-          keterangan: formAbsenKet.trim() || (locationDistance !== null ? `Jarak GPS: ${formatDistance(locationDistance)}` : 'Hadir Tepat Waktu'),
+          keterangan: computedKet,
         }),
       });
       const json = await res.json();
       if (json.success) {
         showToast('Presensi Asatidz berhasil dicatat!');
         const newRecord: AbsensiRecord = {
-          id: json.data?.id || Date.now().toString(),
-          rowIndex: json.data?.rowIndex || Date.now(),
-          waktu: json.data?.waktu || (new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + new Date().toLocaleTimeString('id-ID')),
+          id: json.data?.id || clientGeneratedId,
+          rowIndex: json.data?.rowIndex || clientGeneratedId,
+          waktu: json.data?.waktu || formattedDate,
           acara: formAbsenAcara,
           nama: formAbsenNama.trim(),
           status: formAbsenStatus,
-          keterangan: formAbsenKet.trim() || (locationDistance !== null ? `Jarak GPS: ${formatDistance(locationDistance)}` : 'Hadir Tepat Waktu'),
+          keterangan: computedKet,
         };
-        const customAbsen = getStoredList<AbsensiRecord>('salapp_custom_absensi');
+
+        const datePart = (newRecord.waktu || '').split(' ')[0].trim();
+        const newKey = `${(newRecord.acara || '').trim()}_${(newRecord.nama || '').trim()}_${datePart}`.toLowerCase();
+
+        const customAbsen = getStoredList<AbsensiRecord>('salapp_custom_absensi').filter(r => {
+          const rDate = (r.waktu || '').split(' ')[0].trim();
+          const rKey = `${(r.acara || '').trim()}_${(r.nama || '').trim()}_${rDate}`.toLowerCase();
+          return String(r.id) !== String(newRecord.id) && rKey !== newKey;
+        });
         customAbsen.unshift(newRecord);
         saveStoredList('salapp_custom_absensi', customAbsen);
-        setAbsensiList(prev => [newRecord, ...prev]);
+
+        setAbsensiList(prev => [
+          newRecord,
+          ...prev.filter(r => {
+            const rDate = (r.waktu || '').split(' ')[0].trim();
+            const rKey = `${(r.acara || '').trim()}_${(r.nama || '').trim()}_${rDate}`.toLowerCase();
+            return String(r.id) !== String(newRecord.id) && rKey !== newKey;
+          }),
+        ]);
 
         setFormAbsenNama('');
         setFormAbsenKet('');

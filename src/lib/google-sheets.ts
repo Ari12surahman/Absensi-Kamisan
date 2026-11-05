@@ -531,16 +531,17 @@ export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
   const mergeResults = (baseList: AbsensiRecord[]) => {
     const filtered = baseList.filter(r => !isDeleted(r)).map(applyEdit);
     const added = addedAbsensiList.filter(r => !isDeleted(r)).map(applyEdit);
-    const combined = [...added, ...filtered];
+    const combined = [...filtered, ...added];
 
     const seen = new Set<string>();
     const result: AbsensiRecord[] = [];
     for (const item of combined) {
       const keyId = String(item.id || item.rowIndex);
-      const contentKey = `${item.acara}_${item.nama}_${item.waktu}`.toLowerCase();
-      if (!seen.has(keyId) && !seen.has(contentKey)) {
+      const datePart = (item.waktu || '').split(' ')[0].trim();
+      const personAcaraKey = `${(item.acara || '').trim()}_${(item.nama || '').trim()}_${datePart}`.toLowerCase();
+      if (!seen.has(keyId) && (!personAcaraKey || !seen.has(personAcaraKey))) {
         seen.add(keyId);
-        seen.add(contentKey);
+        if (personAcaraKey) seen.add(personAcaraKey);
         result.push(item);
       }
     }
@@ -603,9 +604,9 @@ export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
 export async function insertAbsensi(data: Partial<AbsensiRecord>) {
   const now = new Date();
   const formattedDate =
-    now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' }) +
     ' ' +
-    now.toLocaleTimeString('id-ID');
+    now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' });
   const newId = String(data.id || now.getTime());
   const newRow = Number(data.rowIndex) || now.getTime();
   const newRecord: AbsensiRecord = {
@@ -618,9 +619,15 @@ export async function insertAbsensi(data: Partial<AbsensiRecord>) {
     keterangan: data.keterangan || '-',
   };
 
-  const existingIdx = addedAbsensiList.findIndex(
-    r => String(r.id) === newId || (`${r.acara}_${r.nama}_${r.waktu}`.toLowerCase() === `${newRecord.acara}_${newRecord.nama}_${newRecord.waktu}`.toLowerCase())
-  );
+  const newDatePart = (newRecord.waktu || '').split(' ')[0].trim();
+  const newPersonAcaraKey = `${(newRecord.acara || '').trim()}_${(newRecord.nama || '').trim()}_${newDatePart}`.toLowerCase();
+
+  const existingIdx = addedAbsensiList.findIndex(r => {
+    const rDatePart = (r.waktu || '').split(' ')[0].trim();
+    const rPersonAcaraKey = `${(r.acara || '').trim()}_${(r.nama || '').trim()}_${rDatePart}`.toLowerCase();
+    return String(r.id) === newId || (rPersonAcaraKey && rPersonAcaraKey === newPersonAcaraKey);
+  });
+
   if (existingIdx !== -1) {
     addedAbsensiList[existingIdx] = newRecord;
   } else {
@@ -628,8 +635,14 @@ export async function insertAbsensi(data: Partial<AbsensiRecord>) {
   }
   mockDb.submitKehadiran({ ...data, id: newId, rowIndex: newRow, waktu: newRecord.waktu });
 
-  const gasRes = await callGasApi<any>('submitKehadiran', { payload: data }, 'POST');
-  if (gasRes && gasRes.success) return gasRes;
+  const gasRes = await callGasApi<any>('submitKehadiran', { payload: { ...data, id: newId, waktu: newRecord.waktu } }, 'POST');
+  if (gasRes && gasRes.success) {
+    return {
+      success: true,
+      message: gasRes.message || 'Presensi Asatidz berhasil dicatat ke Google Sheets!',
+      data: gasRes.data || newRecord,
+    };
+  }
 
   const sheets = getGoogleSheetsClient();
   if (sheets) {
@@ -639,7 +652,7 @@ export async function insertAbsensi(data: Partial<AbsensiRecord>) {
         range: 'Data_Absensi!A:F',
         valueInputOption: 'USER_ENTERED',
         requestBody: {
-          values: [[newId, formattedDate, data.acara, data.nama, data.status, data.keterangan || '-']],
+          values: [[newId, newRecord.waktu, data.acara, data.nama, data.status, data.keterangan || '-']],
         },
       });
       return { success: true, message: 'Presensi Asatidz berhasil dicatat ke Google Sheets!', data: newRecord };
