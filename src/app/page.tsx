@@ -94,7 +94,7 @@ export default function SalAppPage() {
   // Geolocation Geofencing
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
-  const [locationStatus, setLocationStatus] = useState<'loading' | 'valid' | 'invalid' | 'disabled' | 'idle'>('idle');
+  const [locationStatus, setLocationStatus] = useState<'loading' | 'valid' | 'invalid' | 'disabled' | 'idle' | 'free'>('idle');
   const [locationDistance, setLocationDistance] = useState<number | null>(null);
 
   // Form Laporan Divisi State
@@ -147,22 +147,31 @@ export default function SalAppPage() {
     fetchDivisiData();
   }, []);
 
-  // Geolocation validation effect
-  useEffect(() => {
+  // Selected Acara Object
+  const selectedAcaraObj = useMemo(() => {
+    return acaraList.find(a => a.namaAcara === formAbsenAcara);
+  }, [acaraList, formAbsenAcara]);
+
+  // Geolocation Geofence Tracker
+  const checkLocation = () => {
+    if (formAbsenStatus === 'Izin' || formAbsenStatus === 'Sakit') {
+      setLocationStatus('valid');
+      return;
+    }
+
     if (!formAbsenAcara) {
       setLocationStatus('idle');
       return;
     }
 
-    const selectedAcaraObj = acaraList.find(a => a.namaAcara === formAbsenAcara);
     if (!selectedAcaraObj || !selectedAcaraObj.lat || !selectedAcaraObj.lng) {
-      setLocationStatus('valid'); // No geofence required
+      setLocationStatus('free');
       setLocationDistance(null);
       return;
     }
 
     setLocationStatus('loading');
-    if (!navigator.geolocation) {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setLocationStatus('disabled');
       return;
     }
@@ -176,10 +185,11 @@ export default function SalAppPage() {
 
         const targetLat = typeof selectedAcaraObj.lat === 'string' ? parseFloat(selectedAcaraObj.lat) : selectedAcaraObj.lat;
         const targetLng = typeof selectedAcaraObj.lng === 'string' ? parseFloat(selectedAcaraObj.lng) : selectedAcaraObj.lng;
-        const dist = getDistanceFromLatLonInM(uLat, uLng, targetLat, targetLng);
+        const dist = Math.round(getDistanceFromLatLonInM(uLat, uLng, targetLat, targetLng));
         setLocationDistance(dist);
 
-        if (dist <= (selectedAcaraObj.radius || 200)) {
+        const allowedRadius = Number(selectedAcaraObj.radius) || 150;
+        if (dist <= allowedRadius) {
           setLocationStatus('valid');
         } else {
           setLocationStatus('invalid');
@@ -191,7 +201,11 @@ export default function SalAppPage() {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-  }, [formAbsenAcara, acaraList]);
+  };
+
+  useEffect(() => {
+    checkLocation();
+  }, [formAbsenAcara, formAbsenStatus, selectedAcaraObj]);
 
   // Data Fetchers
   const fetchAbsensiData = async () => {
@@ -267,8 +281,12 @@ export default function SalAppPage() {
       showToast('Nama lengkap asatidz wajib diisi!', 'error');
       return;
     }
-    if (locationStatus === 'invalid') {
-      showToast('Anda berada di luar radius presensi kegiatan!', 'error');
+    if (formAbsenStatus === 'Hadir' && locationStatus === 'invalid') {
+      showToast(`Anda berada di luar radius presensi (${locationDistance}m)!`, 'error');
+      return;
+    }
+    if (formAbsenStatus === 'Hadir' && locationStatus === 'disabled') {
+      showToast('Izin GPS dibutuhkan! Mohon aktifkan lokasi browser Anda.', 'error');
       return;
     }
 
@@ -509,12 +527,24 @@ export default function SalAppPage() {
                   {/* Geofence GPS Status Banner */}
                   <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-xs relative z-10">
                     <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></div>
-                      <span className="text-[11px] text-white/90 font-medium">
-                        {locationStatus === 'valid'
-                          ? `Lokasi Terverifikasi (${locationDistance !== null ? locationDistance + 'm' : 'Akurat'})`
+                      <div className={`w-2.5 h-2.5 rounded-full ${
+                        formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
+                          ? 'bg-emerald-400 animate-ping'
                           : locationStatus === 'invalid'
-                          ? `Di Luar Radius (${locationDistance}m dari lokasi)`
+                          ? 'bg-red-400 animate-pulse'
+                          : 'bg-amber-400 animate-pulse'
+                      }`}></div>
+                      <span className="text-[11px] text-white/90 font-medium">
+                        {formAbsenStatus !== 'Hadir'
+                          ? `Status ${formAbsenStatus} • Bebas Radius`
+                          : locationStatus === 'valid'
+                          ? `Lokasi Sesuai (${locationDistance !== null ? locationDistance + 'm' : 'Akurat'}) • Presensi Valid`
+                          : locationStatus === 'free'
+                          ? 'Lokasi Bebas (Tanpa Geofence)'
+                          : locationStatus === 'invalid'
+                          ? `Di Luar Radius Acara (${locationDistance}m)`
+                          : locationStatus === 'disabled'
+                          ? 'Izin GPS Dibutuhkan'
                           : locationStatus === 'loading'
                           ? 'Mendeteksi koordinat GPS...'
                           : 'Pilih agenda untuk cek radius'}
@@ -619,6 +649,87 @@ export default function SalAppPage() {
                       placeholder="Misal: Hadir tepat waktu, tugas dinas, izin keperluan dakwah..."
                       className="w-full bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition"
                     />
+                  </div>
+
+                  {/* Indikator Geolocation Box (Pelacak GPS Akurat) */}
+                  <div className={`p-4 rounded-3xl border transition-all flex items-center justify-between gap-3 shadow-xs ${
+                    formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
+                      ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
+                      : locationStatus === 'invalid'
+                      ? 'bg-red-50/90 border-red-200 text-red-950'
+                      : locationStatus === 'disabled'
+                      ? 'bg-amber-50/90 border-amber-200 text-amber-950'
+                      : 'bg-surface-container-low border-surface-container-high text-on-surface'
+                  }`}>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                        formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
+                          ? 'bg-emerald-600 text-white'
+                          : locationStatus === 'invalid'
+                          ? 'bg-red-600 text-white'
+                          : locationStatus === 'disabled'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-primary text-white'
+                      }`}>
+                        {locationStatus === 'loading' ? (
+                          <RefreshCw size={20} className="animate-spin text-white" />
+                        ) : formAbsenStatus !== 'Hadir' || locationStatus === 'valid' ? (
+                          <CheckCircle size={22} />
+                        ) : locationStatus === 'free' ? (
+                          <Radio size={22} />
+                        ) : locationStatus === 'invalid' ? (
+                          <AlertCircle size={22} />
+                        ) : (
+                          <MapPin size={22} />
+                        )}
+                      </div>
+
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-bold leading-tight">
+                          {formAbsenStatus !== 'Hadir'
+                            ? `Lokasi Bebas Valid (Status: ${formAbsenStatus})`
+                            : !formAbsenAcara
+                            ? 'Pilih Agenda Kegiatan'
+                            : locationStatus === 'loading'
+                            ? 'Memeriksa Titik Lokasi GPS...'
+                            : locationStatus === 'free'
+                            ? 'Lokasi Bebas (Tanpa Batas Radius)'
+                            : locationStatus === 'valid'
+                            ? `GPS Valid (Jarak: ${locationDistance} meter)`
+                            : locationStatus === 'invalid'
+                            ? `Di Luar Area (Jarak Anda: ${locationDistance}m)`
+                            : locationStatus === 'disabled'
+                            ? 'Akses GPS Ditolak / Gagal'
+                            : 'Memeriksa Titik Lokasi GPS...'}
+                        </span>
+                        <span className="text-[11px] opacity-80 truncate mt-0.5">
+                          {formAbsenStatus !== 'Hadir'
+                            ? 'Status izin/sakit tidak dibatasi radius'
+                            : !formAbsenAcara
+                            ? 'Silakan tentukan agenda hari ini terlebih dahulu'
+                            : locationStatus === 'loading'
+                            ? 'Mendeteksi koordinat GPS satelit perangkat Anda...'
+                            : locationStatus === 'free'
+                            ? 'Acara ini tidak mengaktifkan pembatasan geofencing'
+                            : locationStatus === 'valid'
+                            ? `Radius toleransi ${selectedAcaraObj?.radius || 150}m • Lokasi terverifikasi`
+                            : locationStatus === 'invalid'
+                            ? `Maksimal toleransi ${selectedAcaraObj?.radius || 150}m dari titik acara`
+                            : locationStatus === 'disabled'
+                            ? 'Mohon aktifkan izin GPS lokasi pada browser Anda'
+                            : 'Mendeteksi koordinat GPS perangkat Anda'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={checkLocation}
+                      title="Perbarui Titik Lokasi GPS"
+                      className="p-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-primary transition-all flex items-center justify-center shrink-0 shadow-xs border border-surface-container-high active:scale-95"
+                    >
+                      <RefreshCw size={18} className={locationStatus === 'loading' ? 'animate-spin text-primary' : ''} />
+                    </button>
                   </div>
 
                   {/* Submit Button */}

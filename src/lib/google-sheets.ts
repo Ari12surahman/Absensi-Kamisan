@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import * as XLSX from 'xlsx';
 import { mockDb } from './mock-db';
 import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem } from '@/types';
 
@@ -26,7 +27,7 @@ function getGoogleSheetsClient() {
 }
 
 /**
- * Universal Bridge to call Google Apps Script Web App (runs under the spreadsheet owner's account)
+ * Universal Bridge to call Google Apps Script Web App
  */
 async function callGasApi<T>(action: string, payload?: any, method: 'GET' | 'POST' = 'GET'): Promise<T | null> {
   if (!GAS_URL) return null;
@@ -64,6 +65,27 @@ async function callGasApi<T>(action: string, payload?: any, method: 'GET' | 'POS
   }
 }
 
+/**
+ * Direct Public Google Sheets CSV reader (active if spreadsheet has 'Anyone with the link can view')
+ */
+async function fetchCsvSheet(sheetName: string): Promise<any[][] | null> {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const text = await res.text();
+    if (text.trim().startsWith('<!DOCTYPE') || text.includes('<html')) {
+      return null;
+    }
+    const wb = XLSX.read(text, { type: 'string', raw: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
+    return rows;
+  } catch (e) {
+    console.warn(`Error fetching CSV for ${sheetName}:`, e);
+    return null;
+  }
+}
+
 // ==========================================
 // DIVISI
 // ==========================================
@@ -74,7 +96,20 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
     return gasData;
   }
 
-  // 2. Try Google Sheets API v4 (Service Account)
+  // 2. Try Public Google Sheets CSV export
+  const csvRows = await fetchCsvSheet('Data_Divisi');
+  if (csvRows && csvRows.length > 1) {
+    const list = csvRows.slice(1).map((row, index) => ({
+      rowIndex: index + 2,
+      id: String(row[0] || index + 1),
+      namaDivisi: String(row[1] || '').trim(),
+      keterangan: String(row[2] || '-'),
+      status: String(row[3] || 'Aktif'),
+    })).filter(d => d.namaDivisi !== '');
+    if (list.length > 0) return list;
+  }
+
+  // 3. Try Google Sheets API v4 (Service Account)
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
@@ -99,16 +134,14 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
     }
   }
 
-  // 3. Fallback to mockDb
+  // 4. Fallback to mockDb
   return mockDb.getDivisi();
 }
 
 export async function insertDivisi(data: Partial<DivisiItem>) {
-  // 1. Try Google Apps Script API Bridge
   const gasRes = await callGasApi<any>('addDivisi', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
 
-  // 2. Try Google Sheets API v4
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
@@ -152,7 +185,24 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
     return gasData;
   }
 
-  // 2. Try Google Sheets API v4
+  // 2. Try Public Google Sheets CSV export
+  const csvRows = await fetchCsvSheet('Data_Acara');
+  if (csvRows && csvRows.length > 1) {
+    const list = csvRows.slice(1).map((row, index) => ({
+      rowIndex: index + 2,
+      id: String(row[0] || index + 1),
+      namaAcara: String(row[1] || '').trim(),
+      tanggalAcara: String(row[2] || ''),
+      isHidden: String(row[3]).toLowerCase() === 'true',
+      mapLink: String(row[4] || ''),
+      lat: row[5] || '',
+      lng: row[6] || '',
+      radius: parseInt(String(row[7])) || 150,
+    })).filter(a => a.namaAcara !== '').reverse();
+    if (list.length > 0) return list;
+  }
+
+  // 3. Try Google Sheets API v4
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
@@ -249,7 +299,22 @@ export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
     return gasData;
   }
 
-  // 2. Try Google Sheets API v4
+  // 2. Try Public Google Sheets CSV export
+  const csvRows = await fetchCsvSheet('Data_Absensi');
+  if (csvRows && csvRows.length > 1) {
+    const list = csvRows.slice(1).map((row, index) => ({
+      rowIndex: index + 2,
+      id: String(row[0] || index + 1),
+      waktu: String(row[1] || '-'),
+      acara: String(row[2] || '-'),
+      nama: String(row[3] || '').trim(),
+      status: (row[4] || 'Hadir') as 'Hadir' | 'Izin' | 'Sakit',
+      keterangan: String(row[5] || '-'),
+    })).filter(r => r.nama !== '').reverse();
+    if (list.length > 0) return list;
+  }
+
+  // 3. Try Google Sheets API v4
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
@@ -333,7 +398,25 @@ export async function fetchLaporan(): Promise<LaporanItem[]> {
     return gasData;
   }
 
-  // 2. Try Google Sheets API v4
+  // 2. Try Public Google Sheets CSV export
+  const csvRows = await fetchCsvSheet('Data_Laporan_Divisi');
+  if (csvRows && csvRows.length > 1) {
+    const list = csvRows.slice(1).map((row, index) => ({
+      rowIndex: index + 2,
+      id: String(row[0] || index + 1),
+      waktu: String(row[1] || '-'),
+      divisi: String(row[2] || '-'),
+      namaPelapor: String(row[3] || '-'),
+      periode: String(row[4] || '-'),
+      hasilUsaha: String(row[5] || '-'),
+      programKerja: String(row[6] || '-'),
+      evaluasi: String(row[7] || '-'),
+      laporanDana: String(row[8] || '-'),
+    })).filter(r => r.divisi.trim() !== '').reverse();
+    if (list.length > 0) return list;
+  }
+
+  // 3. Try Google Sheets API v4
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
