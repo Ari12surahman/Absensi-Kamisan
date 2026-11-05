@@ -1029,10 +1029,6 @@ export default function SalAppPage() {
                 </button>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-surface-container-low border border-surface-container-high text-[11px] text-on-surface-variant text-center">
-                Sandi bawaan: <code className="font-mono text-primary font-bold">admin123</code> atau <code className="font-mono text-primary font-bold">admin</code>
-              </div>
-
               <button
                 type="submit"
                 disabled={loggingIn}
@@ -1122,17 +1118,17 @@ export default function SalAppPage() {
           </header>
 
           {/* Desktop Fixed Sidebar (280px w-64) */}
-          <aside className="fixed left-0 top-16 bottom-0 w-64 bg-surface-container-lowest border-r border-surface-container-high shadow-xs z-30 hidden lg:flex flex-col justify-between py-6 px-4">
+          <aside className="fixed left-0 top-16 bottom-0 w-64 bg-surface-container-lowest border-r border-surface-container-high shadow-xs z-30 hidden lg:flex flex-col justify-between py-6 px-5">
             <div className="flex flex-col space-y-6">
               <div>
-                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider px-3 mb-2">
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider px-3 mb-2.5">
                   Navigasi Utama
                 </p>
-                <nav className="flex flex-col space-y-1">
+                <nav className="flex flex-col space-y-1.5">
                   <button
                     type="button"
                     onClick={() => setAdminTab('absensi')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs transition active:scale-95 ${
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
                       adminTab === 'absensi'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
@@ -1145,7 +1141,7 @@ export default function SalAppPage() {
                   <button
                     type="button"
                     onClick={() => setAdminTab('acara')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs transition active:scale-95 ${
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
                       adminTab === 'acara'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
@@ -1158,7 +1154,7 @@ export default function SalAppPage() {
                   <button
                     type="button"
                     onClick={() => setAdminTab('laporan')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs transition active:scale-95 ${
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
                       adminTab === 'laporan'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
@@ -1171,7 +1167,7 @@ export default function SalAppPage() {
                   <button
                     type="button"
                     onClick={() => setAdminTab('divisi')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs transition active:scale-95 ${
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
                       adminTab === 'divisi'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
@@ -1195,7 +1191,8 @@ export default function SalAppPage() {
           </aside>
 
           {/* Admin Main Workspace (Offset for Desktop Sidebar) */}
-          <main className="w-full max-w-full lg:pl-64 pt-20 pb-24 lg:pb-12 px-3 sm:px-6 lg:px-8 space-y-6 overflow-x-hidden">
+          <main className="w-full max-w-full lg:pl-64 pt-20 pb-24 lg:pb-16 overflow-x-hidden">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-2 space-y-6">
             {/* ==================================================== */}
             {/* TAB 1: DATA PRESENSI                                */}
             {/* ==================================================== */}
@@ -2097,6 +2094,7 @@ export default function SalAppPage() {
                 </div>
               </div>
             )}
+            </div>
           </main>
 
           {/* Admin Mobile Bottom Bar (lg:hidden) */}
