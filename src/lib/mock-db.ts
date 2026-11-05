@@ -10,8 +10,8 @@ let mockDivisi: DivisiItem[] = [
 ];
 
 let mockAcara: AcaraItem[] = [
-  { rowIndex: 2, id: '101', namaAcara: 'Pengajian & Halaqah Kamisan Asatidz', tanggalAcara: new Date().toISOString().split('T')[0], isHidden: false, mapLink: '', lat: -6.9175, lng: 107.6191, radius: 250 },
-  { rowIndex: 3, id: '102', namaAcara: 'Briefing Koordinasi Pagi (08.30 WIB)', tanggalAcara: new Date().toISOString().split('T')[0], isHidden: false, mapLink: '', lat: -6.9175, lng: 107.6191, radius: 200 },
+  { rowIndex: 2, id: '101', namaAcara: 'Pengajian & Halaqah Kamisan Asatidz', tanggalAcara: new Date().toISOString().split('T')[0], isHidden: false, mapLink: '', lat: '', lng: '', radius: 250 },
+  { rowIndex: 3, id: '102', namaAcara: 'Briefing Koordinasi Pagi (08.30 WIB)', tanggalAcara: new Date().toISOString().split('T')[0], isHidden: false, mapLink: '', lat: '', lng: '', radius: 200 },
   { rowIndex: 4, id: '103', namaAcara: 'Rapat Evaluasi Bulanan Pembina & Asatidz', tanggalAcara: '2026-11-10', isHidden: false, mapLink: '', lat: '', lng: '', radius: 150 },
   { rowIndex: 5, id: '104', namaAcara: 'Pelantikan Pengurus Asrama Santri 2026/2027', tanggalAcara: '2026-10-27', isHidden: true, mapLink: '', lat: '', lng: '', radius: 150 }
 ];
