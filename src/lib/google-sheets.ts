@@ -182,7 +182,11 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
   // 1. Try Google Apps Script API Bridge
   const gasData = await callGasApi<AcaraItem[]>('getAcara');
   if (gasData && Array.isArray(gasData) && gasData.length > 0) {
-    return gasData;
+    return gasData.map(a => ({
+      ...a,
+      lat: a.lat ? String(a.lat).replace(/['"]/g, '').replace(',', '.').trim() : '',
+      lng: a.lng ? String(a.lng).replace(/['"]/g, '').replace(',', '.').trim() : '',
+    }));
   }
 
   // 2. Try Public Google Sheets CSV export
@@ -195,8 +199,8 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
       tanggalAcara: String(row[2] || ''),
       isHidden: String(row[3]).toLowerCase() === 'true',
       mapLink: String(row[4] || ''),
-      lat: row[5] || '',
-      lng: row[6] || '',
+      lat: row[5] ? String(row[5]).replace(/['"]/g, '').replace(',', '.').trim() : '',
+      lng: row[6] ? String(row[6]).replace(/['"]/g, '').replace(',', '.').trim() : '',
       radius: parseInt(String(row[7])) || 150,
     })).filter(a => a.namaAcara !== '').reverse();
     if (list.length > 0) return list;
@@ -220,8 +224,8 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
             tanggalAcara: row[2] || '',
             isHidden: String(row[3]).toLowerCase() === 'true',
             mapLink: row[4] || '',
-            lat: row[5] || '',
-            lng: row[6] || '',
+            lat: row[5] ? String(row[5]).replace(/['"]/g, '').replace(',', '.').trim() : '',
+            lng: row[6] ? String(row[6]).replace(/['"]/g, '').replace(',', '.').trim() : '',
             radius: parseInt(row[7]) || 150,
           }))
           .filter(a => a.namaAcara.trim() !== '')

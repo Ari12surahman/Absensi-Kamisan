@@ -34,7 +34,7 @@ import {
   X
 } from 'lucide-react';
 import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem } from '@/types';
-import { getDistanceFromLatLonInM, formatDistance, extractCoordinates } from '@/lib/geo-utils';
+import { getDistanceFromLatLonInM, formatDistance, extractCoordinates, parseCoordinate } from '@/lib/geo-utils';
 import {
   exportExcelPresensi,
   exportPdfPresensi,
@@ -176,7 +176,10 @@ export default function SalAppPage() {
       return;
     }
 
-    if (!selectedAcaraObj || !selectedAcaraObj.lat || !selectedAcaraObj.lng) {
+    const targetLat = parseCoordinate(selectedAcaraObj?.lat);
+    const targetLng = parseCoordinate(selectedAcaraObj?.lng);
+
+    if (isNaN(targetLat) || isNaN(targetLng) || !targetLat || !targetLng) {
       setLocationStatus('free');
       setLocationDistance(null);
       return;
@@ -195,12 +198,10 @@ export default function SalAppPage() {
         setUserLat(uLat);
         setUserLng(uLng);
 
-        const targetLat = typeof selectedAcaraObj.lat === 'string' ? parseFloat(selectedAcaraObj.lat) : selectedAcaraObj.lat;
-        const targetLng = typeof selectedAcaraObj.lng === 'string' ? parseFloat(selectedAcaraObj.lng) : selectedAcaraObj.lng;
         const dist = Math.round(getDistanceFromLatLonInM(uLat, uLng, targetLat, targetLng));
         setLocationDistance(dist);
 
-        const allowedRadius = Number(selectedAcaraObj.radius) || 150;
+        const allowedRadius = Number(selectedAcaraObj?.radius) || 150;
         if (dist <= allowedRadius) {
           setLocationStatus('valid');
         } else {
