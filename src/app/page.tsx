@@ -148,7 +148,7 @@ export default function SalAppPage() {
     open: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const requestConfirm = (options: {
@@ -270,7 +270,7 @@ export default function SalAppPage() {
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(key, JSON.stringify(list));
-    } catch {}
+    } catch { }
   };
 
   const addStoredKey = (storageKey: string, idOrKey: string) => {
@@ -281,7 +281,7 @@ export default function SalAppPage() {
         list.push(idOrKey);
         saveStoredList(storageKey, list);
       }
-    } catch {}
+    } catch { }
   };
 
   // Data Fetchers with Hybrid Local Sync
@@ -305,14 +305,29 @@ export default function SalAppPage() {
           !deletedKeys.includes(String(r.rowIndex))
         );
 
-        const existingIds = new Set(merged.map((r: AbsensiRecord) => String(r.id || r.rowIndex)));
-        const uniqueCustom = customAdded.filter(
-          r => !existingIds.has(String(r.id || r.rowIndex)) &&
-               !deletedKeys.includes(String(r.id)) &&
-               !deletedKeys.includes(String(r.rowIndex))
-        );
+        const seen = new Set<string>();
+        const dedupedMerged: AbsensiRecord[] = [];
+        for (const item of merged) {
+          const idKey = String(item.id || item.rowIndex);
+          const contentKey = `${item.acara}_${item.nama}_${item.waktu}`.toLowerCase();
+          if (!seen.has(idKey) && !seen.has(contentKey)) {
+            seen.add(idKey);
+            seen.add(contentKey);
+            dedupedMerged.push(item);
+          }
+        }
 
-        setAbsensiList([...uniqueCustom, ...merged]);
+        const uniqueCustom = customAdded.filter(r => {
+          const idKey = String(r.id || r.rowIndex);
+          const contentKey = `${r.acara}_${r.nama}_${r.waktu}`.toLowerCase();
+          if (seen.has(idKey) || seen.has(contentKey)) return false;
+          if (deletedKeys.includes(idKey)) return false;
+          seen.add(idKey);
+          seen.add(contentKey);
+          return true;
+        });
+
+        setAbsensiList([...uniqueCustom, ...dedupedMerged]);
       }
     } catch (e) {
       console.error(e);
@@ -345,15 +360,38 @@ export default function SalAppPage() {
           !deletedKeys.includes((a.namaAcara || '').trim().toLowerCase())
         );
 
-        const existingIds = new Set(merged.map((a: AcaraItem) => String(a.id || a.rowIndex)));
-        const uniqueCustom = customAdded.filter(
-          a => !existingIds.has(String(a.id || a.rowIndex)) &&
-               !deletedKeys.includes(String(a.id)) &&
-               !deletedKeys.includes(String(a.rowIndex)) &&
-               !deletedKeys.includes((a.namaAcara || '').trim().toLowerCase())
-        );
+        // Deduplicate merged items: keep only unique ID and unique lowercase namaAcara
+        const seen = new Set<string>();
+        const dedupedMerged: AcaraItem[] = [];
+        for (const item of merged) {
+          const idKey = String(item.id || item.rowIndex);
+          const nameKey = (item.namaAcara || '').trim().toLowerCase();
+          if (!seen.has(idKey) && (!nameKey || !seen.has('name_' + nameKey))) {
+            seen.add(idKey);
+            if (nameKey) seen.add('name_' + nameKey);
+            dedupedMerged.push(item);
+          }
+        }
 
-        setAcaraList([...uniqueCustom, ...merged]);
+        const uniqueCustom = customAdded.filter(a => {
+          const idKey = String(a.id || a.rowIndex);
+          const nameKey = (a.namaAcara || '').trim().toLowerCase();
+          if (seen.has(idKey) || (nameKey && seen.has('name_' + nameKey))) return false;
+          if (deletedKeys.includes(idKey) || (nameKey && deletedKeys.includes(nameKey))) return false;
+          seen.add(idKey);
+          if (nameKey) seen.add('name_' + nameKey);
+          return true;
+        });
+
+        // Clean up salapp_custom_acara in localStorage so it only contains items not already in server
+        const serverNames = new Set(dedupedMerged.map(a => (a.namaAcara || '').trim().toLowerCase()));
+        const serverIds = new Set(dedupedMerged.map(a => String(a.id || a.rowIndex)));
+        const cleanedCustom = customAdded.filter(
+          a => !serverIds.has(String(a.id || a.rowIndex)) && !serverNames.has((a.namaAcara || '').trim().toLowerCase())
+        );
+        saveStoredList('salapp_custom_acara', cleanedCustom);
+
+        setAcaraList([...uniqueCustom, ...dedupedMerged]);
       }
     } catch (e) {
       console.error(e);
@@ -386,15 +424,38 @@ export default function SalAppPage() {
           !deletedKeys.includes((d.namaDivisi || '').trim().toLowerCase())
         );
 
-        const existingIds = new Set(merged.map((d: DivisiItem) => String(d.id || d.rowIndex)));
-        const uniqueCustom = customAdded.filter(
-          d => !existingIds.has(String(d.id || d.rowIndex)) &&
-               !deletedKeys.includes(String(d.id)) &&
-               !deletedKeys.includes(String(d.rowIndex)) &&
-               !deletedKeys.includes((d.namaDivisi || '').trim().toLowerCase())
-        );
+        // Deduplicate merged items: keep only unique ID and unique lowercase namaDivisi
+        const seen = new Set<string>();
+        const dedupedMerged: DivisiItem[] = [];
+        for (const item of merged) {
+          const idKey = String(item.id || item.rowIndex);
+          const nameKey = (item.namaDivisi || '').trim().toLowerCase();
+          if (!seen.has(idKey) && (!nameKey || !seen.has('name_' + nameKey))) {
+            seen.add(idKey);
+            if (nameKey) seen.add('name_' + nameKey);
+            dedupedMerged.push(item);
+          }
+        }
 
-        setDivisiList([...uniqueCustom, ...merged]);
+        const uniqueCustom = customAdded.filter(d => {
+          const idKey = String(d.id || d.rowIndex);
+          const nameKey = (d.namaDivisi || '').trim().toLowerCase();
+          if (seen.has(idKey) || (nameKey && seen.has('name_' + nameKey))) return false;
+          if (deletedKeys.includes(idKey) || (nameKey && deletedKeys.includes(nameKey))) return false;
+          seen.add(idKey);
+          if (nameKey) seen.add('name_' + nameKey);
+          return true;
+        });
+
+        // Clean up salapp_custom_divisi in localStorage
+        const serverNames = new Set(dedupedMerged.map(d => (d.namaDivisi || '').trim().toLowerCase()));
+        const serverIds = new Set(dedupedMerged.map(d => String(d.id || d.rowIndex)));
+        const cleanedCustom = customAdded.filter(
+          d => !serverIds.has(String(d.id || d.rowIndex)) && !serverNames.has((d.namaDivisi || '').trim().toLowerCase())
+        );
+        saveStoredList('salapp_custom_divisi', cleanedCustom);
+
+        setDivisiList([...uniqueCustom, ...dedupedMerged]);
       }
     } catch (e) {
       console.error(e);
@@ -423,14 +484,29 @@ export default function SalAppPage() {
           !deletedKeys.includes(String(l.rowIndex))
         );
 
-        const existingIds = new Set(merged.map((l: LaporanItem) => String(l.id || l.rowIndex)));
-        const uniqueCustom = customAdded.filter(
-          l => !existingIds.has(String(l.id || l.rowIndex)) &&
-               !deletedKeys.includes(String(l.id)) &&
-               !deletedKeys.includes(String(l.rowIndex))
-        );
+        const seen = new Set<string>();
+        const dedupedMerged: LaporanItem[] = [];
+        for (const item of merged) {
+          const idKey = String(item.id || item.rowIndex);
+          const contentKey = `${item.divisi}_${item.namaPelapor}_${item.periode}`.toLowerCase();
+          if (!seen.has(idKey) && !seen.has(contentKey)) {
+            seen.add(idKey);
+            seen.add(contentKey);
+            dedupedMerged.push(item);
+          }
+        }
 
-        setLaporanList([...uniqueCustom, ...merged]);
+        const uniqueCustom = customAdded.filter(l => {
+          const idKey = String(l.id || l.rowIndex);
+          const contentKey = `${l.divisi}_${l.namaPelapor}_${l.periode}`.toLowerCase();
+          if (seen.has(idKey) || seen.has(contentKey)) return false;
+          if (deletedKeys.includes(idKey)) return false;
+          seen.add(idKey);
+          seen.add(contentKey);
+          return true;
+        });
+
+        setLaporanList([...uniqueCustom, ...dedupedMerged]);
       }
     } catch (e) {
       console.error(e);
@@ -814,13 +890,12 @@ export default function SalAppPage() {
       {toast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] transition-all animate-bounce">
           <div
-            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl shadow-xl text-xs font-bold ${
-              toast.type === 'success'
+            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl shadow-xl text-xs font-bold ${toast.type === 'success'
                 ? 'bg-emerald-600 text-white shadow-emerald-600/30'
                 : toast.type === 'error'
-                ? 'bg-rose-600 text-white shadow-rose-600/30'
-                : 'bg-indigo-600 text-white shadow-indigo-600/30'
-            }`}
+                  ? 'bg-rose-600 text-white shadow-rose-600/30'
+                  : 'bg-indigo-600 text-white shadow-indigo-600/30'
+              }`}
           >
             {toast.type === 'success' && <CheckCircle size={18} />}
             {toast.type === 'error' && <AlertCircle size={18} />}
@@ -888,27 +963,26 @@ export default function SalAppPage() {
                   {/* Geofence GPS Status Banner */}
                   <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-xs relative z-10">
                     <div className="flex items-center gap-2">
-                      <div className={`w-2.5 h-2.5 rounded-full ${
-                        formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
+                      <div className={`w-2.5 h-2.5 rounded-full ${formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
                           ? 'bg-emerald-400 animate-ping'
                           : locationStatus === 'invalid'
-                          ? 'bg-red-400 animate-pulse'
-                          : 'bg-amber-400 animate-pulse'
-                      }`}></div>
+                            ? 'bg-red-400 animate-pulse'
+                            : 'bg-amber-400 animate-pulse'
+                        }`}></div>
                       <span className="text-[11px] text-white/90 font-medium">
                         {formAbsenStatus !== 'Hadir'
                           ? `Status ${formAbsenStatus} • Bebas Radius`
                           : locationStatus === 'valid'
-                          ? `Lokasi Sesuai (${locationDistance !== null ? formatDistance(locationDistance) : 'Akurat'}) • Presensi Valid`
-                          : locationStatus === 'free'
-                          ? 'Lokasi Bebas (Tanpa Geofence)'
-                          : locationStatus === 'invalid'
-                          ? `Di Luar Radius Acara (${formatDistance(locationDistance)})`
-                          : locationStatus === 'disabled'
-                          ? 'Izin GPS Dibutuhkan'
-                          : locationStatus === 'loading'
-                          ? 'Mendeteksi koordinat GPS...'
-                          : 'Pilih agenda untuk cek radius'}
+                            ? `Lokasi Sesuai (${locationDistance !== null ? formatDistance(locationDistance) : 'Akurat'}) • Presensi Valid`
+                            : locationStatus === 'free'
+                              ? 'Lokasi Bebas (Tanpa Geofence)'
+                              : locationStatus === 'invalid'
+                                ? `Di Luar Radius Acara (${formatDistance(locationDistance)})`
+                                : locationStatus === 'disabled'
+                                  ? 'Izin GPS Dibutuhkan'
+                                  : locationStatus === 'loading'
+                                    ? 'Mendeteksi koordinat GPS...'
+                                    : 'Pilih agenda untuk cek radius'}
                       </span>
                     </div>
                   </div>
@@ -962,11 +1036,10 @@ export default function SalAppPage() {
                       <button
                         type="button"
                         onClick={() => setFormAbsenStatus('Hadir')}
-                        className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition active:scale-95 ${
-                          formAbsenStatus === 'Hadir'
+                        className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition active:scale-95 ${formAbsenStatus === 'Hadir'
                             ? 'bg-primary text-white border-primary shadow-md shadow-primary/25'
                             : 'bg-surface-container-low text-on-surface-variant border-surface-container-high hover:bg-surface-container'
-                        }`}
+                          }`}
                       >
                         <CheckCircle size={20} className={formAbsenStatus === 'Hadir' ? 'text-white' : 'text-emerald-600'} />
                         <span>Hadir</span>
@@ -975,11 +1048,10 @@ export default function SalAppPage() {
                       <button
                         type="button"
                         onClick={() => setFormAbsenStatus('Izin')}
-                        className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition active:scale-95 ${
-                          formAbsenStatus === 'Izin'
+                        className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition active:scale-95 ${formAbsenStatus === 'Izin'
                             ? 'bg-amber-600 text-white border-amber-600 shadow-md shadow-amber-600/25'
                             : 'bg-surface-container-low text-on-surface-variant border-surface-container-high hover:bg-surface-container'
-                        }`}
+                          }`}
                       >
                         <HelpCircle size={20} className={formAbsenStatus === 'Izin' ? 'text-white' : 'text-amber-600'} />
                         <span>Izin</span>
@@ -988,11 +1060,10 @@ export default function SalAppPage() {
                       <button
                         type="button"
                         onClick={() => setFormAbsenStatus('Sakit')}
-                        className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition active:scale-95 ${
-                          formAbsenStatus === 'Sakit'
+                        className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition active:scale-95 ${formAbsenStatus === 'Sakit'
                             ? 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/25'
                             : 'bg-surface-container-low text-on-surface-variant border-surface-container-high hover:bg-surface-container'
-                        }`}
+                          }`}
                       >
                         <AlertCircle size={20} className={formAbsenStatus === 'Sakit' ? 'text-white' : 'text-rose-600'} />
                         <span>Sakit</span>
@@ -1013,25 +1084,23 @@ export default function SalAppPage() {
                   </div>
 
                   {/* Indikator Geolocation Box (Pelacak GPS Akurat) */}
-                  <div className={`p-4 rounded-3xl border transition-all flex items-center justify-between gap-3 shadow-xs ${
-                    formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
+                  <div className={`p-4 rounded-3xl border transition-all flex items-center justify-between gap-3 shadow-xs ${formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
                       ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
                       : locationStatus === 'invalid'
-                      ? 'bg-red-50/90 border-red-200 text-red-950'
-                      : locationStatus === 'disabled'
-                      ? 'bg-amber-50/90 border-amber-200 text-amber-950'
-                      : 'bg-surface-container-low border-surface-container-high text-on-surface'
-                  }`}>
+                        ? 'bg-red-50/90 border-red-200 text-red-950'
+                        : locationStatus === 'disabled'
+                          ? 'bg-amber-50/90 border-amber-200 text-amber-950'
+                          : 'bg-surface-container-low border-surface-container-high text-on-surface'
+                    }`}>
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-                        formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
+                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${formAbsenStatus !== 'Hadir' || locationStatus === 'valid' || locationStatus === 'free'
                           ? 'bg-emerald-600 text-white'
                           : locationStatus === 'invalid'
-                          ? 'bg-red-600 text-white'
-                          : locationStatus === 'disabled'
-                          ? 'bg-amber-600 text-white'
-                          : 'bg-primary text-white'
-                      }`}>
+                            ? 'bg-red-600 text-white'
+                            : locationStatus === 'disabled'
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-primary text-white'
+                        }`}>
                         {locationStatus === 'loading' ? (
                           <RefreshCw size={20} className="animate-spin text-white" />
                         ) : formAbsenStatus !== 'Hadir' || locationStatus === 'valid' ? (
@@ -1050,35 +1119,35 @@ export default function SalAppPage() {
                           {formAbsenStatus !== 'Hadir'
                             ? `Lokasi Bebas Valid (Status: ${formAbsenStatus})`
                             : !formAbsenAcara
-                            ? 'Pilih Agenda Kegiatan'
-                            : locationStatus === 'loading'
-                            ? 'Memeriksa Titik Lokasi GPS...'
-                            : locationStatus === 'free'
-                            ? 'Lokasi Bebas (Tanpa Batas Radius)'
-                            : locationStatus === 'valid'
-                            ? `GPS Valid (Jarak: ${formatDistance(locationDistance)})`
-                            : locationStatus === 'invalid'
-                            ? `Di Luar Area (Jarak Anda: ${formatDistance(locationDistance)})`
-                            : locationStatus === 'disabled'
-                            ? 'Akses GPS Ditolak / Gagal'
-                            : 'Memeriksa Titik Lokasi GPS...'}
+                              ? 'Pilih Agenda Kegiatan'
+                              : locationStatus === 'loading'
+                                ? 'Memeriksa Titik Lokasi GPS...'
+                                : locationStatus === 'free'
+                                  ? 'Lokasi Bebas (Tanpa Batas Radius)'
+                                  : locationStatus === 'valid'
+                                    ? `GPS Valid (Jarak: ${formatDistance(locationDistance)})`
+                                    : locationStatus === 'invalid'
+                                      ? `Di Luar Area (Jarak Anda: ${formatDistance(locationDistance)})`
+                                      : locationStatus === 'disabled'
+                                        ? 'Akses GPS Ditolak / Gagal'
+                                        : 'Memeriksa Titik Lokasi GPS...'}
                         </span>
                         <span className="text-[11px] opacity-80 truncate mt-0.5">
                           {formAbsenStatus !== 'Hadir'
                             ? 'Status izin/sakit tidak dibatasi radius'
                             : !formAbsenAcara
-                            ? 'Silakan tentukan agenda hari ini terlebih dahulu'
-                            : locationStatus === 'loading'
-                            ? 'Mendeteksi koordinat GPS satelit perangkat Anda...'
-                            : locationStatus === 'free'
-                            ? 'Acara ini tidak mengaktifkan pembatasan geofencing'
-                            : locationStatus === 'valid'
-                            ? `Radius toleransi ${selectedAcaraObj?.radius || 150}m • Lokasi terverifikasi`
-                            : locationStatus === 'invalid'
-                            ? `Maksimal toleransi ${selectedAcaraObj?.radius || 150}m dari titik acara`
-                            : locationStatus === 'disabled'
-                            ? 'Mohon aktifkan izin GPS lokasi pada browser Anda'
-                            : 'Mendeteksi koordinat GPS perangkat Anda'}
+                              ? 'Silakan tentukan agenda hari ini terlebih dahulu'
+                              : locationStatus === 'loading'
+                                ? 'Mendeteksi koordinat GPS satelit perangkat Anda...'
+                                : locationStatus === 'free'
+                                  ? 'Acara ini tidak mengaktifkan pembatasan geofencing'
+                                  : locationStatus === 'valid'
+                                    ? `Radius toleransi ${selectedAcaraObj?.radius || 150}m • Lokasi terverifikasi`
+                                    : locationStatus === 'invalid'
+                                      ? `Maksimal toleransi ${selectedAcaraObj?.radius || 150}m dari titik acara`
+                                      : locationStatus === 'disabled'
+                                        ? 'Mohon aktifkan izin GPS lokasi pada browser Anda'
+                                        : 'Mendeteksi koordinat GPS perangkat Anda'}
                         </span>
                       </div>
                     </div>
@@ -1178,11 +1247,10 @@ export default function SalAppPage() {
                               key={p}
                               type="button"
                               onClick={() => setLapPeriode(p)}
-                              className={`py-2.5 rounded-xl text-[11px] font-bold border transition ${
-                                lapPeriode === p
+                              className={`py-2.5 rounded-xl text-[11px] font-bold border transition ${lapPeriode === p
                                   ? 'bg-primary text-white border-primary shadow-xs'
                                   : 'bg-surface-container-low text-on-surface-variant border-surface-container-high hover:bg-surface-container'
-                              }`}
+                                }`}
                             >
                               {p.replace('Pekan ', 'P')}
                             </button>
@@ -1297,11 +1365,10 @@ export default function SalAppPage() {
               <button
                 type="button"
                 onClick={() => setPortalTab('absensi')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full text-xs transition-all duration-300 active:scale-95 ${
-                  portalTab === 'absensi'
+                className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full text-xs transition-all duration-300 active:scale-95 ${portalTab === 'absensi'
                     ? 'bg-primary text-white font-bold shadow-md shadow-primary/25'
                     : 'text-on-surface-variant hover:text-on-surface font-semibold'
-                }`}
+                  }`}
               >
                 <Fingerprint size={18} />
                 <span>Presensi</span>
@@ -1311,11 +1378,10 @@ export default function SalAppPage() {
               <button
                 type="button"
                 onClick={() => setPortalTab('laporan')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full text-xs transition-all duration-300 active:scale-95 ${
-                  portalTab === 'laporan'
+                className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full text-xs transition-all duration-300 active:scale-95 ${portalTab === 'laporan'
                     ? 'bg-primary text-white font-bold shadow-md shadow-primary/25'
                     : 'text-on-surface-variant hover:text-on-surface font-semibold'
-                }`}
+                  }`}
               >
                 <FileText size={18} />
                 <span>Laporan</span>
@@ -1476,11 +1542,10 @@ export default function SalAppPage() {
                   <button
                     type="button"
                     onClick={() => setAdminTab('absensi')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
-                      adminTab === 'absensi'
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${adminTab === 'absensi'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
-                    }`}
+                      }`}
                   >
                     <Fingerprint size={20} />
                     <span>Data Presensi</span>
@@ -1489,11 +1554,10 @@ export default function SalAppPage() {
                   <button
                     type="button"
                     onClick={() => setAdminTab('acara')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
-                      adminTab === 'acara'
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${adminTab === 'acara'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
-                    }`}
+                      }`}
                   >
                     <Calendar size={20} />
                     <span>Manajemen Acara</span>
@@ -1502,11 +1566,10 @@ export default function SalAppPage() {
                   <button
                     type="button"
                     onClick={() => setAdminTab('laporan')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
-                      adminTab === 'laporan'
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${adminTab === 'laporan'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
-                    }`}
+                      }`}
                   >
                     <FileText size={20} />
                     <span>Laporan Divisi</span>
@@ -1515,11 +1578,10 @@ export default function SalAppPage() {
                   <button
                     type="button"
                     onClick={() => setAdminTab('divisi')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${
-                      adminTab === 'divisi'
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${adminTab === 'divisi'
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
-                    }`}
+                      }`}
                   >
                     <Building size={20} />
                     <span>Kelola Divisi</span>
@@ -1541,863 +1603,857 @@ export default function SalAppPage() {
           {/* Admin Main Workspace (Offset for Desktop Sidebar) */}
           <main className="w-full max-w-full lg:pl-64 pt-20 pb-24 lg:pb-16 overflow-x-hidden">
             <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-2 space-y-6">
-            {/* ==================================================== */}
-            {/* TAB 1: DATA PRESENSI                                */}
-            {/* ==================================================== */}
-            {adminTab === 'absensi' && (
-              <div className="space-y-6 w-full max-w-full">
-                {/* Header Section */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">
-                      Data Kehadiran &amp; Presensi Asatidz
-                    </h2>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      Monitoring presensi aktif seluruh halaqah dan kegiatan asatidz secara real-time.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={fetchAbsensiData}
-                      className="px-3.5 py-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-bold text-xs transition border border-surface-container-high shadow-xs flex items-center gap-1.5 active:scale-95"
-                    >
-                      <RefreshCw size={16} className={loadingAbsensi ? 'animate-spin' : ''} />
-                      <span>Segarkan</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4 KPI Stat Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Total Presensi</span>
-                      <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center">
-                        <Fingerprint size={20} />
-                      </div>
-                    </div>
+              {/* ==================================================== */}
+              {/* TAB 1: DATA PRESENSI                                */}
+              {/* ==================================================== */}
+              {adminTab === 'absensi' && (
+                <div className="space-y-6 w-full max-w-full">
+                  {/* Header Section */}
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
-                      <span className="text-3xl font-extrabold text-on-surface font-sans">{absensiList.length}</span>
-                      <p className="text-[11px] text-emerald-600 font-bold mt-1">Presensi aktif tercatat</p>
+                      <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">
+                        Data Kehadiran &amp; Presensi Asatidz
+                      </h2>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        Monitoring presensi aktif seluruh halaqah dan kegiatan asatidz secara real-time.
+                      </p>
                     </div>
-                  </div>
-
-                  <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Hadir Tepat Waktu</span>
-                      <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                        <CheckCircle size={20} />
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-3xl font-extrabold text-on-surface font-sans">{totalHadirCount}</span>
-                      <p className="text-[11px] text-primary font-bold mt-1">Tingkat Disiplin {onTimePercentage}%</p>
-                    </div>
-                  </div>
-
-                  <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Izin &amp; Sakit</span>
-                      <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
-                        <AlertCircle size={20} />
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-3xl font-extrabold text-on-surface font-sans">{izinSakitCount}</span>
-                      <p className="text-[11px] text-amber-700 font-medium mt-1">Berkas &amp; alasan ditinjau</p>
-                    </div>
-                  </div>
-
-                  <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Agenda Berjalan</span>
-                      <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center">
-                        <Calendar size={20} />
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-3xl font-extrabold text-on-surface font-sans">{new Set(absensiList.map(a => a.acara)).size}</span>
-                      <p className="text-[11px] text-purple-700 font-medium mt-1">Halaqah &amp; kajian aktif</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Filter & Export Bar */}
-                <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 bg-surface-container-lowest p-4 rounded-3xl border border-surface-container-high shadow-xs">
-                  <div className="flex flex-wrap items-center gap-2.5 flex-1">
-                    <div className="relative flex-1 min-w-[200px]">
-                      <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline" />
-                      <input
-                        type="text"
-                        value={searchAbsensiAdmin}
-                        onChange={e => {
-                          setSearchAbsensiAdmin(e.target.value);
-                          setPageAbsensi(1);
-                        }}
-                        placeholder="Cari nama asatidz atau keterangan..."
-                        className="w-full pl-10 pr-4 py-2.5 bg-surface-container-low rounded-2xl text-xs font-medium text-on-surface outline-none border border-transparent focus:border-primary transition"
-                      />
-                    </div>
-
-                    <div className="relative min-w-[180px]">
-                      <select
-                        value={filterAcaraAdmin}
-                        onChange={e => {
-                          setFilterAcaraAdmin(e.target.value);
-                          setPageAbsensi(1);
-                        }}
-                        className="w-full px-4 py-2.5 bg-surface-container-low rounded-2xl text-xs font-semibold text-on-surface outline-none border border-transparent focus:border-primary transition"
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={fetchAbsensiData}
+                        className="px-3.5 py-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-bold text-xs transition border border-surface-container-high shadow-xs flex items-center gap-1.5 active:scale-95"
                       >
-                        <option value="">Semua Agenda Acara</option>
-                        {[...new Set(absensiList.map(a => a.acara))].filter(Boolean).map(ac => (
-                          <option key={ac} value={ac}>
-                            {ac}
-                          </option>
-                        ))}
-                      </select>
+                        <RefreshCw size={16} className={loadingAbsensi ? 'animate-spin' : ''} />
+                        <span>Segarkan</span>
+                      </button>
                     </div>
                   </div>
 
-                  {/* Export Buttons */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => exportExcelPresensi(filteredAbsensi, filterAcaraAdmin)}
-                      className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
-                    >
-                      <Download size={16} />
-                      <span>Excel</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => exportPdfPresensi(filteredAbsensi, filterAcaraAdmin)}
-                      className="px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
-                    >
-                      <Download size={16} />
-                      <span>PDF</span>
-                    </button>
+                  {/* 4 KPI Stat Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Total Presensi</span>
+                        <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center">
+                          <Fingerprint size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-3xl font-extrabold text-on-surface font-sans">{absensiList.length}</span>
+                        <p className="text-[11px] text-emerald-600 font-bold mt-1">Presensi aktif tercatat</p>
+                      </div>
+                    </div>
+
+                    <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Hadir Tepat Waktu</span>
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                          <CheckCircle size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-3xl font-extrabold text-on-surface font-sans">{totalHadirCount}</span>
+                        <p className="text-[11px] text-primary font-bold mt-1">Tingkat Disiplin {onTimePercentage}%</p>
+                      </div>
+                    </div>
+
+                    <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Izin &amp; Sakit</span>
+                        <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                          <AlertCircle size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-3xl font-extrabold text-on-surface font-sans">{izinSakitCount}</span>
+                        <p className="text-[11px] text-amber-700 font-medium mt-1">Berkas &amp; alasan ditinjau</p>
+                      </div>
+                    </div>
+
+                    <div className="p-5 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-xs flex flex-col justify-between space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Agenda Berjalan</span>
+                        <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                          <Calendar size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-3xl font-extrabold text-on-surface font-sans">{new Set(absensiList.map(a => a.acara)).size}</span>
+                        <p className="text-[11px] text-purple-700 font-medium mt-1">Halaqah &amp; kajian aktif</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filter & Export Bar */}
+                  <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 bg-surface-container-lowest p-4 rounded-3xl border border-surface-container-high shadow-xs">
+                    <div className="flex flex-wrap items-center gap-2.5 flex-1">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline" />
+                        <input
+                          type="text"
+                          value={searchAbsensiAdmin}
+                          onChange={e => {
+                            setSearchAbsensiAdmin(e.target.value);
+                            setPageAbsensi(1);
+                          }}
+                          placeholder="Cari nama asatidz atau keterangan..."
+                          className="w-full pl-10 pr-4 py-2.5 bg-surface-container-low rounded-2xl text-xs font-medium text-on-surface outline-none border border-transparent focus:border-primary transition"
+                        />
+                      </div>
+
+                      <div className="relative min-w-[180px]">
+                        <select
+                          value={filterAcaraAdmin}
+                          onChange={e => {
+                            setFilterAcaraAdmin(e.target.value);
+                            setPageAbsensi(1);
+                          }}
+                          className="w-full px-4 py-2.5 bg-surface-container-low rounded-2xl text-xs font-semibold text-on-surface outline-none border border-transparent focus:border-primary transition"
+                        >
+                          <option value="">Semua Agenda Acara</option>
+                          {[...new Set(absensiList.map(a => a.acara))].filter(Boolean).map(ac => (
+                            <option key={ac} value={ac}>
+                              {ac}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Export Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => exportExcelPresensi(filteredAbsensi, filterAcaraAdmin)}
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Download size={16} />
+                        <span>Excel</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => exportPdfPresensi(filteredAbsensi, filterAcaraAdmin)}
+                        className="px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Download size={16} />
+                        <span>PDF</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* MOBILE VIEW: Clean Vertical Cards (block md:hidden) - Zero Horizontal Scroll */}
+                  <div className="space-y-3 block md:hidden">
+                    {paginatedAbsensi.length === 0 ? (
+                      <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                        {loadingAbsensi ? 'Memuat data presensi...' : 'Tidak ada data presensi yang sesuai.'}
+                      </div>
+                    ) : (
+                      paginatedAbsensi.map((item, idx) => {
+                        const actualIdx = (pageAbsensi - 1) * PAGE_SIZE + idx + 1;
+                        const initials = (item.nama || 'AS')
+                          .split(' ')
+                          .map(n => n[0])
+                          .slice(0, 2)
+                          .join('')
+                          .toUpperCase();
+
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                          >
+                            {/* Card Header: Initials + Name + ID + Status Badge */}
+                            <div className="flex items-start justify-between gap-2.5">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                  {initials}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.nama}</h3>
+                                  <span className="text-[10px] text-on-surface-variant font-mono uppercase mt-0.5">
+                                    #{formatIndex(actualIdx)} &bull; ID: ASATIDZ-{item.id}
+                                  </span>
+                                </div>
+                              </div>
+                              <span
+                                className={`h-6 px-2.5 rounded-full text-[10px] font-bold flex items-center shrink-0 uppercase tracking-wide ${item.status?.toLowerCase() === 'hadir'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : item.status?.toLowerCase() === 'izin'
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  }`}
+                              >
+                                {item.status?.toUpperCase()}
+                              </span>
+                            </div>
+
+                            {/* Card Body: Agenda, Time & Keterangan */}
+                            <div className="bg-surface-container-low/60 rounded-2xl p-3 flex flex-col gap-2 text-xs">
+                              <div className="flex items-center gap-2 text-on-surface font-semibold text-xs truncate">
+                                <Calendar size={14} className="text-primary shrink-0" />
+                                <span className="truncate">{item.acara}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-on-surface-variant">
+                                <div className="flex items-center gap-1.5 font-mono">
+                                  <Clock size={13} className="shrink-0 text-outline" />
+                                  <span>{item.waktu || '-'}</span>
+                                </div>
+                                {item.keterangan && (
+                                  <div className="flex items-center gap-1 text-on-surface-variant truncate max-w-[55%]">
+                                    <MapPin size={13} className="shrink-0 text-emerald-600" />
+                                    <span className="truncate">{item.keterangan}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Card Footer: Action Buttons */}
+                            <div className="flex items-center justify-end gap-2 pt-1 border-t border-surface-container-high/40">
+                              <button
+                                type="button"
+                                onClick={() => setModalEditAbsen({ open: true, item })}
+                                className="px-3.5 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                              >
+                                <Edit size={14} />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAbsensi(item)}
+                                className="px-3.5 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                              >
+                                <Trash2 size={14} />
+                                <span>Hapus</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* DESKTOP VIEW: Paginated Table (hidden md:block) */}
+                  <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                          <th className="p-4 w-12 text-center">NO</th>
+                          <th className="p-4 whitespace-nowrap">WAKTU</th>
+                          <th className="p-4 whitespace-nowrap">NAMA ASATIDZ</th>
+                          <th className="p-4 whitespace-nowrap">AGENDA ACARA</th>
+                          <th className="p-4 whitespace-nowrap text-center">STATUS</th>
+                          <th className="p-4 min-w-[160px]">KETERANGAN / GPS</th>
+                          <th className="p-4 text-center whitespace-nowrap">AKSI</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-xs divide-y divide-surface-container-high">
+                        {paginatedAbsensi.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="text-center p-8 text-on-surface-variant font-medium">
+                              {loadingAbsensi ? 'Memuat data presensi...' : 'Tidak ada data presensi yang sesuai.'}
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedAbsensi.map((item, idx) => {
+                            const actualIdx = (pageAbsensi - 1) * PAGE_SIZE + idx + 1;
+                            const initials = (item.nama || 'AS')
+                              .split(' ')
+                              .map(n => n[0])
+                              .slice(0, 2)
+                              .join('')
+                              .toUpperCase();
+
+                            return (
+                              <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
+                                <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(actualIdx)}</td>
+                                <td className="p-4 whitespace-nowrap font-mono text-[11px]">{item.waktu || '-'}</td>
+                                <td className="p-4 whitespace-nowrap">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                      {initials}
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-on-surface leading-tight">{item.nama}</p>
+                                      <span className="text-[10px] text-on-surface-variant font-mono uppercase">ID: ASATIDZ-{item.id}</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="p-4 whitespace-nowrap font-medium text-on-surface text-xs">{item.acara}</td>
+                                <td className="p-4 text-center whitespace-nowrap">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold ${item.status?.toLowerCase() === 'hadir'
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        : item.status?.toLowerCase() === 'izin'
+                                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                      }`}
+                                  >
+                                    {item.status?.toUpperCase()}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-xs text-on-surface-variant font-medium">{item.keterangan || '-'}</td>
+                                <td className="p-4 text-center whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => setModalEditAbsen({ open: true, item })}
+                                    className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
+                                    title="Edit Presensi"
+                                  >
+                                    <Edit size={16} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAbsensi(item)}
+                                    className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
+                                    title="Hapus Presensi"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Common Pagination Bar (Mobile & Desktop) */}
+                  <div className="px-5 py-3.5 bg-surface-container-lowest rounded-2xl border border-surface-container-high shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <div className="text-on-surface-variant font-medium text-center sm:text-left">
+                      Menampilkan{' '}
+                      <span className="font-bold text-on-surface">
+                        {filteredAbsensi.length > 0 ? (pageAbsensi - 1) * PAGE_SIZE + 1 : 0} -{' '}
+                        {Math.min(pageAbsensi * PAGE_SIZE, filteredAbsensi.length)}
+                      </span>{' '}
+                      dari <span className="font-bold text-on-surface">{filteredAbsensi.length}</span> data (Hal. {pageAbsensi}/
+                      {Math.max(1, Math.ceil(filteredAbsensi.length / PAGE_SIZE))})
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPageAbsensi(p => Math.max(1, p - 1))}
+                        disabled={pageAbsensi <= 1}
+                        className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
+                      >
+                        <ChevronLeft size={16} />
+                        <span className="hidden sm:inline">Sebelumnya</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPageAbsensi(p => Math.min(Math.ceil(filteredAbsensi.length / PAGE_SIZE), p + 1))}
+                        disabled={pageAbsensi >= Math.ceil(filteredAbsensi.length / PAGE_SIZE)}
+                        className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
+                      >
+                        <span className="hidden sm:inline">Berikutnya</span>
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                {/* MOBILE VIEW: Clean Vertical Cards (block md:hidden) - Zero Horizontal Scroll */}
-                <div className="space-y-3 block md:hidden">
-                  {paginatedAbsensi.length === 0 ? (
-                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
-                      {loadingAbsensi ? 'Memuat data presensi...' : 'Tidak ada data presensi yang sesuai.'}
+              {/* ==================================================== */}
+              {/* TAB 2: MANAJEMEN ACARA                              */}
+              {/* ==================================================== */}
+              {adminTab === 'acara' && (
+                <div className="space-y-6 w-full max-w-full">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Manajemen Agenda Acara</h2>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        Kelola jadwal pengajian, halaqah, koordinasi GPS geofencing toleransi jarak.
+                      </p>
                     </div>
-                  ) : (
-                    paginatedAbsensi.map((item, idx) => {
-                      const actualIdx = (pageAbsensi - 1) * PAGE_SIZE + idx + 1;
-                      const initials = (item.nama || 'AS')
-                        .split(' ')
-                        .map(n => n[0])
-                        .slice(0, 2)
-                        .join('')
-                        .toUpperCase();
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setModalAcara({ open: true })}
+                        className="px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-md shadow-primary/25 flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Plus size={18} />
+                        <span>Tambah Acara Baru</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={fetchAcaraData}
+                        className="p-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-bold text-xs transition border border-surface-container-high shadow-xs"
+                      >
+                        <RefreshCw size={18} className={loadingAcara ? 'animate-spin' : ''} />
+                      </button>
+                    </div>
+                  </div>
 
-                      return (
+                  {/* MOBILE VIEW: Cards for Acara (block md:hidden) */}
+                  <div className="space-y-3 block md:hidden">
+                    {paginatedAcara.length === 0 ? (
+                      <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                        {loadingAcara ? 'Memuat data acara...' : 'Tidak ada agenda acara terdaftar.'}
+                      </div>
+                    ) : (
+                      paginatedAcara.map((item, idx) => (
                         <div
                           key={item.id || idx}
                           className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
                         >
-                          {/* Card Header: Initials + Name + ID + Status Badge */}
                           <div className="flex items-start justify-between gap-2.5">
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                                {initials}
+                              <div className="w-10 h-10 rounded-2xl bg-surface-container-low text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                <Calendar size={18} />
                               </div>
-                              <div className="flex flex-col min-w-0">
-                                <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.nama}</h3>
-                                <span className="text-[10px] text-on-surface-variant font-mono uppercase mt-0.5">
-                                  #{formatIndex(actualIdx)} &bull; ID: ASATIDZ-{item.id}
-                                </span>
+                              <div className="min-w-0">
+                                <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.namaAcara}</h3>
+                                <span className="text-[11px] text-on-surface-variant font-medium mt-0.5 block">{item.tanggalAcara}</span>
                               </div>
                             </div>
                             <span
-                              className={`h-6 px-2.5 rounded-full text-[10px] font-bold flex items-center shrink-0 uppercase tracking-wide ${
-                                item.status?.toLowerCase() === 'hadir'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : item.status?.toLowerCase() === 'izin'
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
-                              }`}
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wide ${item.isHidden
+                                  ? 'bg-surface-container text-on-surface-variant'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}
                             >
-                              {item.status?.toUpperCase()}
+                              {item.isHidden ? 'DISEMBUNYIKAN' : 'TAMPIL'}
                             </span>
                           </div>
 
-                          {/* Card Body: Agenda, Time & Keterangan */}
-                          <div className="bg-surface-container-low/60 rounded-2xl p-3 flex flex-col gap-2 text-xs">
-                            <div className="flex items-center gap-2 text-on-surface font-semibold text-xs truncate">
-                              <Calendar size={14} className="text-primary shrink-0" />
-                              <span className="truncate">{item.acara}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-on-surface-variant">
-                              <div className="flex items-center gap-1.5 font-mono">
-                                <Clock size={13} className="shrink-0 text-outline" />
-                                <span>{item.waktu || '-'}</span>
-                              </div>
-                              {item.keterangan && (
-                                <div className="flex items-center gap-1 text-on-surface-variant truncate max-w-[55%]">
-                                  <MapPin size={13} className="shrink-0 text-emerald-600" />
-                                  <span className="truncate">{item.keterangan}</span>
-                                </div>
-                              )}
+                          <div className="flex items-center justify-between text-xs text-on-surface-variant pt-2 border-t border-surface-container-low">
+                            <span className="flex items-center gap-1 font-medium text-[11px]">
+                              <MapPin size={13} className="text-primary" />
+                              Toleransi: {item.radius || 150}m
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatusAcara(item)}
+                                className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition active:scale-95"
+                                title={item.isHidden ? 'Tampilkan' : 'Sembunyikan'}
+                              >
+                                {item.isHidden ? <Eye size={15} /> : <EyeOff size={15} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModalAcara({ open: true, item })}
+                                className="p-2 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white transition active:scale-95"
+                                title="Edit Acara"
+                              >
+                                <Edit size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAcara(item)}
+                                className="p-2 rounded-xl bg-error-container text-error hover:bg-red-200 transition active:scale-95"
+                                title="Hapus Acara"
+                              >
+                                <Trash2 size={15} />
+                              </button>
                             </div>
                           </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
 
-                          {/* Card Footer: Action Buttons */}
-                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-surface-container-high/40">
+                  {/* DESKTOP VIEW: Table Acara (hidden md:block) */}
+                  <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                          <th className="p-4 w-12 text-center">NO</th>
+                          <th className="p-4 whitespace-nowrap">NAMA AGENDA</th>
+                          <th className="p-4 whitespace-nowrap">TANGGAL</th>
+                          <th className="p-4 whitespace-nowrap text-center">STATUS</th>
+                          <th className="p-4 whitespace-nowrap">RADIUS GPS</th>
+                          <th className="p-4 text-center whitespace-nowrap">AKSI</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-xs divide-y divide-surface-container-high">
+                        {paginatedAcara.map((item, idx) => (
+                          <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
+                            <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
+                            <td className="p-4 font-bold text-on-surface text-xs sm:text-sm whitespace-nowrap">{item.namaAcara}</td>
+                            <td className="p-4 text-xs font-medium text-on-surface-variant whitespace-nowrap">{item.tanggalAcara}</td>
+                            <td className="p-4 text-center whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${item.isHidden
+                                    ? 'bg-surface-container text-on-surface-variant'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  }`}
+                              >
+                                {item.isHidden ? 'DISEMBUNYIKAN' : 'TAMPIL'}
+                              </span>
+                            </td>
+                            <td className="p-4 text-xs text-on-surface-variant whitespace-nowrap font-medium">
+                              Toleransi: {item.radius || 150}m
+                            </td>
+                            <td className="p-4 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatusAcara(item)}
+                                className="text-on-surface-variant hover:text-primary p-2 rounded-xl hover:bg-surface-container transition mr-1"
+                                title={item.isHidden ? 'Tampilkan' : 'Sembunyikan'}
+                              >
+                                {item.isHidden ? <Eye size={18} /> : <EyeOff size={18} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModalAcara({ open: true, item })}
+                                className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
+                                title="Edit Acara"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAcara(item)}
+                                className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
+                                title="Hapus Acara"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 3: LAPORAN DIVISI                               */}
+              {/* ==================================================== */}
+              {adminTab === 'laporan' && (
+                <div className="space-y-6 w-full max-w-full">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Laporan Divisi Masuk</h2>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        Verifikasi capaian kerja divisi, evaluasi hambatan, dan realisasi kas per pekan.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => exportExcelLaporan(filteredLaporan, filterDivisiAdmin)}
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Download size={16} />
+                        <span>Excel</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => exportPdfLaporan(filteredLaporan, filterDivisiAdmin)}
+                        className="px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Download size={16} />
+                        <span>PDF</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* MOBILE VIEW: Cards for Laporan (block md:hidden) */}
+                  <div className="space-y-3 block md:hidden">
+                    {paginatedLaporan.length === 0 ? (
+                      <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                        {loadingLaporan ? 'Memuat data laporan...' : 'Tidak ada laporan divisi masuk.'}
+                      </div>
+                    ) : (
+                      paginatedLaporan.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                        >
+                          {/* Card Header: Division Icon + Name + Reporter & Period */}
+                          <div className="flex items-start justify-between gap-2.5">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                <FileText size={18} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <h3 className="text-sm font-bold text-primary truncate leading-tight">{item.divisi}</h3>
+                                <p className="text-[11px] text-on-surface font-semibold mt-0.5 truncate">
+                                  PJ: {item.namaPelapor}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-surface-container-low text-primary text-[10px] font-bold shrink-0 border border-surface-container-high/60">
+                              {item.periode || 'Pekan Ini'}
+                            </span>
+                          </div>
+
+                          {/* Capaian & Program Kerja */}
+                          {item.hasilUsaha && (
+                            <div className="bg-surface-container-low/40 p-3 rounded-2xl border border-surface-container-high/40 flex flex-col gap-1">
+                              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">
+                                Capaian &amp; Proker
+                              </span>
+                              <p className="text-xs text-on-surface leading-relaxed break-words">
+                                {item.hasilUsaha}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Anggaran & Kas (Dedicated full-width block, never overlaps or 'tembus-tembus') */}
+                          {item.laporanDana && item.laporanDana !== '-' && (
+                            <div className="bg-surface-container-low/80 p-3 rounded-2xl border border-surface-container-high/60 flex items-start gap-2.5">
+                              <DollarSign size={16} className="text-primary shrink-0 mt-0.5" />
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
+                                  Anggaran &amp; Realisasi Kas
+                                </span>
+                                <p className="font-mono text-xs font-semibold text-primary break-words mt-0.5 leading-relaxed">
+                                  {item.laporanDana}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-surface-container-low">
                             <button
                               type="button"
-                              onClick={() => setModalEditAbsen({ open: true, item })}
-                              className="px-3.5 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                              onClick={() => setModalDetailLaporan({ open: true, item })}
+                              className="px-3 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                            >
+                              <Eye size={14} />
+                              <span>Detail</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setModalEditLaporan({ open: true, item })}
+                              className="px-3 py-1.5 rounded-xl bg-surface-container text-on-surface-variant hover:text-primary text-xs font-bold transition flex items-center gap-1 active:scale-95"
                             >
                               <Edit size={14} />
                               <span>Edit</span>
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteAbsensi(item)}
-                              className="px-3.5 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                              onClick={() => handleDeleteLaporan(item)}
+                              className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
                             >
                               <Trash2 size={14} />
                               <span>Hapus</span>
                             </button>
                           </div>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
+                      ))
+                    )}
+                  </div>
 
-                {/* DESKTOP VIEW: Paginated Table (hidden md:block) */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
-                        <th className="p-4 w-12 text-center">NO</th>
-                        <th className="p-4 whitespace-nowrap">WAKTU</th>
-                        <th className="p-4 whitespace-nowrap">NAMA ASATIDZ</th>
-                        <th className="p-4 whitespace-nowrap">AGENDA ACARA</th>
-                        <th className="p-4 whitespace-nowrap text-center">STATUS</th>
-                        <th className="p-4 min-w-[160px]">KETERANGAN / GPS</th>
-                        <th className="p-4 text-center whitespace-nowrap">AKSI</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-xs divide-y divide-surface-container-high">
-                      {paginatedAbsensi.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="text-center p-8 text-on-surface-variant font-medium">
-                            {loadingAbsensi ? 'Memuat data presensi...' : 'Tidak ada data presensi yang sesuai.'}
-                          </td>
+                  {/* DESKTOP VIEW: Table Laporan (hidden md:block) */}
+                  <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                          <th className="p-4 w-12 text-center">NO</th>
+                          <th className="p-4 whitespace-nowrap">DIVISI</th>
+                          <th className="p-4 whitespace-nowrap">PELAPOR &amp; PERIODE</th>
+                          <th className="p-4 min-w-[200px]">RINGKASAN CAPAIAN</th>
+                          <th className="p-4 whitespace-nowrap">ANGGARAN &amp; KAS</th>
+                          <th className="p-4 text-center whitespace-nowrap">AKSI</th>
                         </tr>
-                      ) : (
-                        paginatedAbsensi.map((item, idx) => {
-                          const actualIdx = (pageAbsensi - 1) * PAGE_SIZE + idx + 1;
-                          const initials = (item.nama || 'AS')
-                            .split(' ')
-                            .map(n => n[0])
-                            .slice(0, 2)
-                            .join('')
-                            .toUpperCase();
-
-                          return (
-                            <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
-                              <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(actualIdx)}</td>
-                              <td className="p-4 whitespace-nowrap font-mono text-[11px]">{item.waktu || '-'}</td>
-                              <td className="p-4 whitespace-nowrap">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                                    {initials}
-                                  </div>
-                                  <div>
-                                    <p className="font-bold text-on-surface leading-tight">{item.nama}</p>
-                                    <span className="text-[10px] text-on-surface-variant font-mono uppercase">ID: ASATIDZ-{item.id}</span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="p-4 whitespace-nowrap font-medium text-on-surface text-xs">{item.acara}</td>
-                              <td className="p-4 text-center whitespace-nowrap">
-                                <span
-                                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold ${
-                                    item.status?.toLowerCase() === 'hadir'
-                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                      : item.status?.toLowerCase() === 'izin'
-                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                  }`}
-                                >
-                                  {item.status?.toUpperCase()}
-                                </span>
-                              </td>
-                              <td className="p-4 text-xs text-on-surface-variant font-medium">{item.keterangan || '-'}</td>
-                              <td className="p-4 text-center whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => setModalEditAbsen({ open: true, item })}
-                                  className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
-                                  title="Edit Presensi"
-                                >
-                                  <Edit size={16} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteAbsensi(item)}
-                                  className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
-                                  title="Hapus Presensi"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Common Pagination Bar (Mobile & Desktop) */}
-                <div className="px-5 py-3.5 bg-surface-container-lowest rounded-2xl border border-surface-container-high shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                  <div className="text-on-surface-variant font-medium text-center sm:text-left">
-                    Menampilkan{' '}
-                    <span className="font-bold text-on-surface">
-                      {filteredAbsensi.length > 0 ? (pageAbsensi - 1) * PAGE_SIZE + 1 : 0} -{' '}
-                      {Math.min(pageAbsensi * PAGE_SIZE, filteredAbsensi.length)}
-                    </span>{' '}
-                    dari <span className="font-bold text-on-surface">{filteredAbsensi.length}</span> data (Hal. {pageAbsensi}/
-                    {Math.max(1, Math.ceil(filteredAbsensi.length / PAGE_SIZE))})
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setPageAbsensi(p => Math.max(1, p - 1))}
-                      disabled={pageAbsensi <= 1}
-                      className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
-                    >
-                      <ChevronLeft size={16} />
-                      <span className="hidden sm:inline">Sebelumnya</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPageAbsensi(p => Math.min(Math.ceil(filteredAbsensi.length / PAGE_SIZE), p + 1))}
-                      disabled={pageAbsensi >= Math.ceil(filteredAbsensi.length / PAGE_SIZE)}
-                      className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs transition flex items-center gap-1"
-                    >
-                      <span className="hidden sm:inline">Berikutnya</span>
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ==================================================== */}
-            {/* TAB 2: MANAJEMEN ACARA                              */}
-            {/* ==================================================== */}
-            {adminTab === 'acara' && (
-              <div className="space-y-6 w-full max-w-full">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Manajemen Agenda Acara</h2>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      Kelola jadwal pengajian, halaqah, koordinasi GPS geofencing toleransi jarak.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setModalAcara({ open: true })}
-                      className="px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-md shadow-primary/25 flex items-center gap-1.5 active:scale-95"
-                    >
-                      <Plus size={18} />
-                      <span>Tambah Acara Baru</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={fetchAcaraData}
-                      className="p-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-bold text-xs transition border border-surface-container-high shadow-xs"
-                    >
-                      <RefreshCw size={18} className={loadingAcara ? 'animate-spin' : ''} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* MOBILE VIEW: Cards for Acara (block md:hidden) */}
-                <div className="space-y-3 block md:hidden">
-                  {paginatedAcara.length === 0 ? (
-                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
-                      {loadingAcara ? 'Memuat data acara...' : 'Tidak ada agenda acara terdaftar.'}
-                    </div>
-                  ) : (
-                    paginatedAcara.map((item, idx) => (
-                      <div
-                        key={item.id || idx}
-                        className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
-                      >
-                        <div className="flex items-start justify-between gap-2.5">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-2xl bg-surface-container-low text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                              <Calendar size={18} />
-                            </div>
-                            <div className="min-w-0">
-                              <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.namaAcara}</h3>
-                              <span className="text-[11px] text-on-surface-variant font-medium mt-0.5 block">{item.tanggalAcara}</span>
-                            </div>
-                          </div>
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wide ${
-                              item.isHidden
-                                ? 'bg-surface-container text-on-surface-variant'
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            }`}
-                          >
-                            {item.isHidden ? 'DISEMBUNYIKAN' : 'TAMPIL'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between text-xs text-on-surface-variant pt-2 border-t border-surface-container-low">
-                          <span className="flex items-center gap-1 font-medium text-[11px]">
-                            <MapPin size={13} className="text-primary" />
-                            Toleransi: {item.radius || 150}m
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatusAcara(item)}
-                              className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition active:scale-95"
-                              title={item.isHidden ? 'Tampilkan' : 'Sembunyikan'}
-                            >
-                              {item.isHidden ? <Eye size={15} /> : <EyeOff size={15} />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setModalAcara({ open: true, item })}
-                              className="p-2 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white transition active:scale-95"
-                              title="Edit Acara"
-                            >
-                              <Edit size={15} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteAcara(item)}
-                              className="p-2 rounded-xl bg-error-container text-error hover:bg-red-200 transition active:scale-95"
-                              title="Hapus Acara"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* DESKTOP VIEW: Table Acara (hidden md:block) */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
-                        <th className="p-4 w-12 text-center">NO</th>
-                        <th className="p-4 whitespace-nowrap">NAMA AGENDA</th>
-                        <th className="p-4 whitespace-nowrap">TANGGAL</th>
-                        <th className="p-4 whitespace-nowrap text-center">STATUS</th>
-                        <th className="p-4 whitespace-nowrap">RADIUS GPS</th>
-                        <th className="p-4 text-center whitespace-nowrap">AKSI</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-xs divide-y divide-surface-container-high">
-                      {paginatedAcara.map((item, idx) => (
-                        <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
-                          <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
-                          <td className="p-4 font-bold text-on-surface text-xs sm:text-sm whitespace-nowrap">{item.namaAcara}</td>
-                          <td className="p-4 text-xs font-medium text-on-surface-variant whitespace-nowrap">{item.tanggalAcara}</td>
-                          <td className="p-4 text-center whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                                item.isHidden
-                                  ? 'bg-surface-container text-on-surface-variant'
-                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              }`}
-                            >
-                              {item.isHidden ? 'DISEMBUNYIKAN' : 'TAMPIL'}
-                            </span>
-                          </td>
-                          <td className="p-4 text-xs text-on-surface-variant whitespace-nowrap font-medium">
-                            Toleransi: {item.radius || 150}m
-                          </td>
-                          <td className="p-4 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatusAcara(item)}
-                              className="text-on-surface-variant hover:text-primary p-2 rounded-xl hover:bg-surface-container transition mr-1"
-                              title={item.isHidden ? 'Tampilkan' : 'Sembunyikan'}
-                            >
-                              {item.isHidden ? <Eye size={18} /> : <EyeOff size={18} />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setModalAcara({ open: true, item })}
-                              className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
-                              title="Edit Acara"
-                            >
-                              <Edit size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteAcara(item)}
-                              className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
-                              title="Hapus Acara"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* ==================================================== */}
-            {/* TAB 3: LAPORAN DIVISI                               */}
-            {/* ==================================================== */}
-            {adminTab === 'laporan' && (
-              <div className="space-y-6 w-full max-w-full">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Laporan Divisi Masuk</h2>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      Verifikasi capaian kerja divisi, evaluasi hambatan, dan realisasi kas per pekan.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => exportExcelLaporan(filteredLaporan, filterDivisiAdmin)}
-                      className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
-                    >
-                      <Download size={16} />
-                      <span>Excel</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => exportPdfLaporan(filteredLaporan, filterDivisiAdmin)}
-                      className="px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
-                    >
-                      <Download size={16} />
-                      <span>PDF</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* MOBILE VIEW: Cards for Laporan (block md:hidden) */}
-                <div className="space-y-3 block md:hidden">
-                  {paginatedLaporan.length === 0 ? (
-                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
-                      {loadingLaporan ? 'Memuat data laporan...' : 'Tidak ada laporan divisi masuk.'}
-                    </div>
-                  ) : (
-                    paginatedLaporan.map((item, idx) => (
-                      <div
-                        key={item.id || idx}
-                        className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
-                      >
-                        {/* Card Header: Division Icon + Name + Reporter & Period */}
-                        <div className="flex items-start justify-between gap-2.5">
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                              <FileText size={18} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="text-sm font-bold text-primary truncate leading-tight">{item.divisi}</h3>
-                              <p className="text-[11px] text-on-surface font-semibold mt-0.5 truncate">
-                                PJ: {item.namaPelapor}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-full bg-surface-container-low text-primary text-[10px] font-bold shrink-0 border border-surface-container-high/60">
-                            {item.periode || 'Pekan Ini'}
-                          </span>
-                        </div>
-
-                        {/* Capaian & Program Kerja */}
-                        {item.hasilUsaha && (
-                          <div className="bg-surface-container-low/40 p-3 rounded-2xl border border-surface-container-high/40 flex flex-col gap-1">
-                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">
-                              Capaian &amp; Proker
-                            </span>
-                            <p className="text-xs text-on-surface leading-relaxed break-words">
-                              {item.hasilUsaha}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Anggaran & Kas (Dedicated full-width block, never overlaps or 'tembus-tembus') */}
-                        {item.laporanDana && item.laporanDana !== '-' && (
-                          <div className="bg-surface-container-low/80 p-3 rounded-2xl border border-surface-container-high/60 flex items-start gap-2.5">
-                            <DollarSign size={16} className="text-primary shrink-0 mt-0.5" />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
-                                Anggaran &amp; Realisasi Kas
-                              </span>
-                              <p className="font-mono text-xs font-semibold text-primary break-words mt-0.5 leading-relaxed">
+                      </thead>
+                      <tbody className="text-xs divide-y divide-surface-container-high">
+                        {paginatedLaporan.map((item, idx) => (
+                          <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
+                            <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
+                            <td className="p-4 whitespace-nowrap font-bold text-primary">{item.divisi}</td>
+                            <td className="p-4 whitespace-nowrap">
+                              <p className="font-bold text-on-surface">{item.namaPelapor}</p>
+                              <span className="text-[11px] text-on-surface-variant font-medium">{item.periode}</span>
+                            </td>
+                            <td className="p-4 min-w-[200px]">
+                              <p className="text-xs text-on-surface line-clamp-2 leading-relaxed">{item.hasilUsaha}</p>
+                            </td>
+                            <td className="p-4 text-xs font-mono text-on-surface-variant max-w-[220px]">
+                              <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-semibold text-primary block truncate" title={item.laporanDana}>
                                 {item.laporanDana}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-surface-container-low">
-                          <button
-                            type="button"
-                            onClick={() => setModalDetailLaporan({ open: true, item })}
-                            className="px-3 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          >
-                            <Eye size={14} />
-                            <span>Detail</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setModalEditLaporan({ open: true, item })}
-                            className="px-3 py-1.5 rounded-xl bg-surface-container text-on-surface-variant hover:text-primary text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          >
-                            <Edit size={14} />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteLaporan(item)}
-                            className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          >
-                            <Trash2 size={14} />
-                            <span>Hapus</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* DESKTOP VIEW: Table Laporan (hidden md:block) */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
-                        <th className="p-4 w-12 text-center">NO</th>
-                        <th className="p-4 whitespace-nowrap">DIVISI</th>
-                        <th className="p-4 whitespace-nowrap">PELAPOR &amp; PERIODE</th>
-                        <th className="p-4 min-w-[200px]">RINGKASAN CAPAIAN</th>
-                        <th className="p-4 whitespace-nowrap">ANGGARAN &amp; KAS</th>
-                        <th className="p-4 text-center whitespace-nowrap">AKSI</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-xs divide-y divide-surface-container-high">
-                      {paginatedLaporan.map((item, idx) => (
-                        <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
-                          <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
-                          <td className="p-4 whitespace-nowrap font-bold text-primary">{item.divisi}</td>
-                          <td className="p-4 whitespace-nowrap">
-                            <p className="font-bold text-on-surface">{item.namaPelapor}</p>
-                            <span className="text-[11px] text-on-surface-variant font-medium">{item.periode}</span>
-                          </td>
-                          <td className="p-4 min-w-[200px]">
-                            <p className="text-xs text-on-surface line-clamp-2 leading-relaxed">{item.hasilUsaha}</p>
-                          </td>
-                          <td className="p-4 text-xs font-mono text-on-surface-variant max-w-[220px]">
-                            <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-semibold text-primary block truncate" title={item.laporanDana}>
-                              {item.laporanDana}
-                            </span>
-                          </td>
-                          <td className="p-4 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => setModalDetailLaporan({ open: true, item })}
-                              className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
-                              title="Lihat Detail Laporan"
-                            >
-                              <Eye size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setModalEditLaporan({ open: true, item })}
-                              className="text-on-surface-variant hover:text-primary bg-surface-container hover:bg-surface-container-high p-2 rounded-xl transition mr-1"
-                              title="Edit Laporan"
-                            >
-                              <Edit size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteLaporan(item)}
-                              className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
-                              title="Hapus Laporan"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* ==================================================== */}
-            {/* TAB 4: KELOLA DIVISI                                */}
-            {/* ==================================================== */}
-            {adminTab === 'divisi' && (
-              <div className="space-y-6 w-full max-w-full">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Kelola Struktur Divisi</h2>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      Daftar divisi operasional asatidz yang terintegrasi langsung dengan formulir laporan.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setModalDivisi({ open: true })}
-                      className="px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-md shadow-primary/25 flex items-center gap-1.5 active:scale-95"
-                    >
-                      <Plus size={18} />
-                      <span>Tambah Divisi Baru</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={fetchDivisiData}
-                      className="p-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-bold text-xs transition border border-surface-container-high shadow-xs"
-                    >
-                      <RefreshCw size={18} className={loadingDivisi ? 'animate-spin' : ''} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* MOBILE VIEW: Cards for Divisi (block md:hidden) */}
-                <div className="space-y-3 block md:hidden">
-                  {paginatedDivisi.length === 0 ? (
-                    <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
-                      {loadingDivisi ? 'Memuat data divisi...' : 'Tidak ada divisi terdaftar.'}
-                    </div>
-                  ) : (
-                    paginatedDivisi.map((item, idx) => (
-                      <div
-                        key={item.id || idx}
-                        className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
-                      >
-                        <div className="flex items-start justify-between gap-2.5">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-2xl bg-surface-container-low text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                              <Building size={18} />
-                            </div>
-                            <div className="min-w-0">
-                              <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.namaDivisi}</h3>
-                              <span className="text-[10px] text-on-surface-variant font-mono mt-0.5 block">
-                                #{formatIndex(idx + 1)}
                               </span>
-                            </div>
-                          </div>
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wide ${
-                              item.status === 'Aktif' || !item.status
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-surface-container text-on-surface-variant'
-                            }`}
-                          >
-                            {item.status || 'Aktif'}
-                          </span>
-                        </div>
-
-                        {item.keterangan && (
-                          <div className="bg-surface-container-low/50 p-3 rounded-2xl border border-surface-container-high/40">
-                            <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
-                              {item.keterangan}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-surface-container-low">
-                          <button
-                            type="button"
-                            onClick={() => setModalDivisi({ open: true, item })}
-                            className="px-3 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          >
-                            <Edit size={14} />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDivisi(item)}
-                            className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          >
-                            <Trash2 size={14} />
-                            <span>Hapus</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                            </td>
+                            <td className="p-4 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setModalDetailLaporan({ open: true, item })}
+                                className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
+                                title="Lihat Detail Laporan"
+                              >
+                                <Eye size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModalEditLaporan({ open: true, item })}
+                                className="text-on-surface-variant hover:text-primary bg-surface-container hover:bg-surface-container-high p-2 rounded-xl transition mr-1"
+                                title="Edit Laporan"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLaporan(item)}
+                                className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
+                                title="Hapus Laporan"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+              )}
 
-                {/* DESKTOP VIEW: Table Divisi (hidden md:block) */}
-                <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
-                        <th className="p-4 w-12 text-center">NO</th>
-                        <th className="p-4 whitespace-nowrap">NAMA DIVISI</th>
-                        <th className="p-4">KETERANGAN / DESKRIPSI PERAN</th>
-                        <th className="p-4 whitespace-nowrap text-center">STATUS</th>
-                        <th className="p-4 text-center whitespace-nowrap">AKSI</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-xs divide-y divide-surface-container-high">
-                      {paginatedDivisi.map((item, idx) => (
-                        <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
-                          <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
-                          <td className="p-4 whitespace-nowrap font-bold text-on-surface">{item.namaDivisi}</td>
-                          <td className="p-4 text-xs text-on-surface-variant font-medium">{item.keterangan || '-'}</td>
-                          <td className="p-4 text-center whitespace-nowrap">
+              {/* ==================================================== */}
+              {/* TAB 4: KELOLA DIVISI                                */}
+              {/* ==================================================== */}
+              {adminTab === 'divisi' && (
+                <div className="space-y-6 w-full max-w-full">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Kelola Struktur Divisi</h2>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        Daftar divisi operasional asatidz yang terintegrasi langsung dengan formulir laporan.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setModalDivisi({ open: true })}
+                        className="px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-md shadow-primary/25 flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Plus size={18} />
+                        <span>Tambah Divisi Baru</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={fetchDivisiData}
+                        className="p-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-bold text-xs transition border border-surface-container-high shadow-xs"
+                      >
+                        <RefreshCw size={18} className={loadingDivisi ? 'animate-spin' : ''} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* MOBILE VIEW: Cards for Divisi (block md:hidden) */}
+                  <div className="space-y-3 block md:hidden">
+                    {paginatedDivisi.length === 0 ? (
+                      <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                        {loadingDivisi ? 'Memuat data divisi...' : 'Tidak ada divisi terdaftar.'}
+                      </div>
+                    ) : (
+                      paginatedDivisi.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                        >
+                          <div className="flex items-start justify-between gap-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-2xl bg-surface-container-low text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                <Building size={18} />
+                              </div>
+                              <div className="min-w-0">
+                                <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.namaDivisi}</h3>
+                                <span className="text-[10px] text-on-surface-variant font-mono mt-0.5 block">
+                                  #{formatIndex(idx + 1)}
+                                </span>
+                              </div>
+                            </div>
                             <span
-                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                                item.status === 'Aktif' || !item.status
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wide ${item.status === 'Aktif' || !item.status
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                   : 'bg-surface-container text-on-surface-variant'
-                              }`}
+                                }`}
                             >
                               {item.status || 'Aktif'}
                             </span>
-                          </td>
-                          <td className="p-4 text-center whitespace-nowrap">
+                          </div>
+
+                          {item.keterangan && (
+                            <div className="bg-surface-container-low/50 p-3 rounded-2xl border border-surface-container-high/40">
+                              <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
+                                {item.keterangan}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-surface-container-low">
                             <button
                               type="button"
                               onClick={() => setModalDivisi({ open: true, item })}
-                              className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
-                              title="Edit Divisi"
+                              className="px-3 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
                             >
-                              <Edit size={16} />
+                              <Edit size={14} />
+                              <span>Edit</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteDivisi(item)}
-                              className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
-                              title="Hapus Divisi"
+                              className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
                             >
-                              <Trash2 size={16} />
+                              <Trash2 size={14} />
+                              <span>Hapus</span>
                             </button>
-                          </td>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* DESKTOP VIEW: Table Divisi (hidden md:block) */}
+                  <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                          <th className="p-4 w-12 text-center">NO</th>
+                          <th className="p-4 whitespace-nowrap">NAMA DIVISI</th>
+                          <th className="p-4">KETERANGAN / DESKRIPSI PERAN</th>
+                          <th className="p-4 whitespace-nowrap text-center">STATUS</th>
+                          <th className="p-4 text-center whitespace-nowrap">AKSI</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="text-xs divide-y divide-surface-container-high">
+                        {paginatedDivisi.map((item, idx) => (
+                          <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
+                            <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
+                            <td className="p-4 whitespace-nowrap font-bold text-on-surface">{item.namaDivisi}</td>
+                            <td className="p-4 text-xs text-on-surface-variant font-medium">{item.keterangan || '-'}</td>
+                            <td className="p-4 text-center whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${item.status === 'Aktif' || !item.status
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-surface-container text-on-surface-variant'
+                                  }`}
+                              >
+                                {item.status || 'Aktif'}
+                              </span>
+                            </td>
+                            <td className="p-4 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setModalDivisi({ open: true, item })}
+                                className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
+                                title="Edit Divisi"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDivisi(item)}
+                                className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
+                                title="Hapus Divisi"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             </div>
           </main>
 
@@ -2407,9 +2463,8 @@ export default function SalAppPage() {
               <button
                 type="button"
                 onClick={() => setAdminTab('absensi')}
-                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${
-                  adminTab === 'absensi' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
-                }`}
+                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${adminTab === 'absensi' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
+                  }`}
               >
                 <Fingerprint size={20} />
                 <span className="text-[10px]">Presensi</span>
@@ -2417,9 +2472,8 @@ export default function SalAppPage() {
               <button
                 type="button"
                 onClick={() => setAdminTab('acara')}
-                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${
-                  adminTab === 'acara' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
-                }`}
+                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${adminTab === 'acara' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
+                  }`}
               >
                 <Calendar size={20} />
                 <span className="text-[10px]">Acara</span>
@@ -2427,9 +2481,8 @@ export default function SalAppPage() {
               <button
                 type="button"
                 onClick={() => setAdminTab('laporan')}
-                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${
-                  adminTab === 'laporan' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
-                }`}
+                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${adminTab === 'laporan' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
+                  }`}
               >
                 <FileText size={20} />
                 <span className="text-[10px]">Laporan</span>
@@ -2437,9 +2490,8 @@ export default function SalAppPage() {
               <button
                 type="button"
                 onClick={() => setAdminTab('divisi')}
-                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${
-                  adminTab === 'divisi' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
-                }`}
+                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${adminTab === 'divisi' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
+                  }`}
               >
                 <Building size={20} />
                 <span className="text-[10px]">Divisi</span>
@@ -2517,24 +2569,35 @@ export default function SalAppPage() {
                   });
                 } else {
                   const newId = Date.now().toString();
+                  const newRow = Date.now();
                   const newItem: DivisiItem = {
                     id: newId,
-                    rowIndex: Date.now(),
+                    rowIndex: newRow,
                     namaDivisi: nama,
                     keterangan: ket,
                     status: status as any,
                   };
 
-                  setDivisiList(prev => [newItem, ...prev]);
+                  setDivisiList(prev => {
+                    const exists = prev.some(
+                      d => (d.namaDivisi && d.namaDivisi.trim().toLowerCase() === nama.toLowerCase()) || String(d.id) === newId
+                    );
+                    return exists ? prev : [newItem, ...prev];
+                  });
 
                   const customList = getStoredList<DivisiItem>('salapp_custom_divisi');
-                  customList.unshift(newItem);
-                  saveStoredList('salapp_custom_divisi', customList);
+                  const existsCustom = customList.some(
+                    d => d.namaDivisi && d.namaDivisi.trim().toLowerCase() === nama.toLowerCase()
+                  );
+                  if (!existsCustom) {
+                    customList.unshift(newItem);
+                    saveStoredList('salapp_custom_divisi', customList);
+                  }
 
                   await fetch('/api/divisi', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ namaDivisi: nama, keterangan: ket, status }),
+                    body: JSON.stringify({ id: newId, rowIndex: newRow, namaDivisi: nama, keterangan: ket, status }),
                   });
                 }
                 showToast('Divisi berhasil disimpan!');
@@ -2661,23 +2724,34 @@ export default function SalAppPage() {
                   });
                 } else {
                   const newId = Date.now().toString();
+                  const newRow = Date.now();
                   const newItem: AcaraItem = {
                     id: newId,
-                    rowIndex: Date.now(),
+                    rowIndex: newRow,
                     isHidden: false,
                     ...payload,
                   };
 
-                  setAcaraList(prev => [newItem, ...prev]);
+                  setAcaraList(prev => {
+                    const exists = prev.some(
+                      a => (a.namaAcara && a.namaAcara.trim().toLowerCase() === nama.toLowerCase()) || String(a.id) === newId
+                    );
+                    return exists ? prev : [newItem, ...prev];
+                  });
 
                   const customList = getStoredList<AcaraItem>('salapp_custom_acara');
-                  customList.unshift(newItem);
-                  saveStoredList('salapp_custom_acara', customList);
+                  const existsCustom = customList.some(
+                    a => a.namaAcara && a.namaAcara.trim().toLowerCase() === nama.toLowerCase()
+                  );
+                  if (!existsCustom) {
+                    customList.unshift(newItem);
+                    saveStoredList('salapp_custom_acara', customList);
+                  }
 
                   await fetch('/api/acara', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify({ id: newId, rowIndex: newRow, ...payload }),
                   });
                 }
                 showToast('Acara berhasil disimpan!');
@@ -3224,11 +3298,10 @@ export default function SalAppPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
           <div className="bg-surface-container-lowest rounded-3xl shadow-2xl border border-surface-container-high w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-150">
             <div
-              className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 border ${
-                confirmModal.isDanger
+              className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 border ${confirmModal.isDanger
                   ? 'bg-error/10 text-error border-error/20'
                   : 'bg-primary/10 text-primary border-primary/20'
-              }`}
+                }`}
             >
               <AlertTriangle size={28} />
             </div>
@@ -3249,9 +3322,8 @@ export default function SalAppPage() {
                   setConfirmModal(prev => ({ ...prev, open: false }));
                   action();
                 }}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-md transition active:scale-95 ${
-                  confirmModal.isDanger ? 'bg-error hover:bg-red-700' : 'bg-primary hover:bg-primary-container'
-                }`}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-md transition active:scale-95 ${confirmModal.isDanger ? 'bg-error hover:bg-red-700' : 'bg-primary hover:bg-primary-container'
+                  }`}
               >
                 {confirmModal.confirmLabel || 'Lanjutkan'}
               </button>

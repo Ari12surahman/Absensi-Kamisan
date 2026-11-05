@@ -110,9 +110,20 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
   const mergeResults = (baseList: DivisiItem[]) => {
     const filtered = baseList.filter(d => !isDeleted(d)).map(applyEdit);
     const added = addedDivisiList.filter(d => !isDeleted(d)).map(applyEdit);
-    const existingIds = new Set(filtered.map(d => String(d.id || d.rowIndex)));
-    const uniqueAdded = added.filter(d => !existingIds.has(String(d.id || d.rowIndex)));
-    return [...uniqueAdded, ...filtered];
+    const combined = [...added, ...filtered];
+
+    const seen = new Set<string>();
+    const result: DivisiItem[] = [];
+    for (const item of combined) {
+      const keyId = String(item.id || item.rowIndex);
+      const keyName = (item.namaDivisi || '').trim().toLowerCase();
+      if (!seen.has(keyId) && (!keyName || !seen.has('name_' + keyName))) {
+        seen.add(keyId);
+        if (keyName) seen.add('name_' + keyName);
+        result.push(item);
+      }
+    }
+    return result;
   };
 
   // 1. Try Google Apps Script API Bridge
@@ -165,16 +176,25 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
 }
 
 export async function insertDivisi(data: Partial<DivisiItem>) {
-  const newId = Date.now().toString();
+  const newId = String(data.id || Date.now());
+  const newRow = Number(data.rowIndex) || Date.now();
   const newItem: DivisiItem = {
-    rowIndex: Date.now(),
+    rowIndex: newRow,
     id: newId,
     namaDivisi: data.namaDivisi || '',
     keterangan: data.keterangan || '-',
     status: data.status || 'Aktif',
   };
-  addedDivisiList.unshift(newItem);
-  mockDb.addDivisi(data);
+
+  const existingIdx = addedDivisiList.findIndex(
+    d => String(d.id) === newId || (d.namaDivisi && d.namaDivisi.trim().toLowerCase() === (data.namaDivisi || '').trim().toLowerCase())
+  );
+  if (existingIdx !== -1) {
+    addedDivisiList[existingIdx] = newItem;
+  } else {
+    addedDivisiList.unshift(newItem);
+  }
+  mockDb.addDivisi({ ...data, id: newId, rowIndex: newRow });
 
   const gasRes = await callGasApi<any>('addDivisi', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
@@ -260,9 +280,20 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
   const mergeResults = (baseList: AcaraItem[]) => {
     const filtered = baseList.filter(a => !isDeleted(a)).map(applyEdit);
     const added = addedAcaraList.filter(a => !isDeleted(a)).map(applyEdit);
-    const existingIds = new Set(filtered.map(a => String(a.id || a.rowIndex)));
-    const uniqueAdded = added.filter(a => !existingIds.has(String(a.id || a.rowIndex)));
-    return [...uniqueAdded, ...filtered];
+    const combined = [...added, ...filtered];
+
+    const seen = new Set<string>();
+    const result: AcaraItem[] = [];
+    for (const item of combined) {
+      const keyId = String(item.id || item.rowIndex);
+      const keyName = (item.namaAcara || '').trim().toLowerCase();
+      if (!seen.has(keyId) && (!keyName || !seen.has('name_' + keyName))) {
+        seen.add(keyId);
+        if (keyName) seen.add('name_' + keyName);
+        result.push(item);
+      }
+    }
+    return result;
   };
 
   // 1. Try Google Apps Script API Bridge
@@ -328,9 +359,10 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
 }
 
 export async function insertAcara(data: Partial<AcaraItem>) {
-  const newId = Date.now().toString();
+  const newId = String(data.id || Date.now());
+  const newRow = Number(data.rowIndex) || Date.now();
   const newItem: AcaraItem = {
-    rowIndex: Date.now(),
+    rowIndex: newRow,
     id: newId,
     namaAcara: data.namaAcara || '',
     tanggalAcara: data.tanggalAcara || new Date().toISOString().split('T')[0],
@@ -340,8 +372,16 @@ export async function insertAcara(data: Partial<AcaraItem>) {
     lng: data.lng || '',
     radius: Number(data.radius) || 150,
   };
-  addedAcaraList.unshift(newItem);
-  mockDb.addAcara(data);
+
+  const existingIdx = addedAcaraList.findIndex(
+    a => String(a.id) === newId || (a.namaAcara && a.namaAcara.trim().toLowerCase() === (data.namaAcara || '').trim().toLowerCase())
+  );
+  if (existingIdx !== -1) {
+    addedAcaraList[existingIdx] = newItem;
+  } else {
+    addedAcaraList.unshift(newItem);
+  }
+  mockDb.addAcara({ ...data, id: newId, rowIndex: newRow });
 
   const gasRes = await callGasApi<any>('addAcara', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
@@ -451,9 +491,20 @@ export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
   const mergeResults = (baseList: AbsensiRecord[]) => {
     const filtered = baseList.filter(r => !isDeleted(r)).map(applyEdit);
     const added = addedAbsensiList.filter(r => !isDeleted(r)).map(applyEdit);
-    const existingIds = new Set(filtered.map(r => String(r.id || r.rowIndex)));
-    const uniqueAdded = added.filter(r => !existingIds.has(String(r.id || r.rowIndex)));
-    return [...uniqueAdded, ...filtered];
+    const combined = [...added, ...filtered];
+
+    const seen = new Set<string>();
+    const result: AbsensiRecord[] = [];
+    for (const item of combined) {
+      const keyId = String(item.id || item.rowIndex);
+      const contentKey = `${item.acara}_${item.nama}_${item.waktu}`.toLowerCase();
+      if (!seen.has(keyId) && !seen.has(contentKey)) {
+        seen.add(keyId);
+        seen.add(contentKey);
+        result.push(item);
+      }
+    }
+    return result;
   };
 
   // 1. Try Google Apps Script API Bridge
@@ -515,18 +566,27 @@ export async function insertAbsensi(data: Partial<AbsensiRecord>) {
     now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
     ' ' +
     now.toLocaleTimeString('id-ID');
-  const newId = now.getTime().toString();
+  const newId = String(data.id || now.getTime());
+  const newRow = Number(data.rowIndex) || now.getTime();
   const newRecord: AbsensiRecord = {
-    rowIndex: now.getTime(),
+    rowIndex: newRow,
     id: newId,
-    waktu: formattedDate,
+    waktu: data.waktu || formattedDate,
     acara: data.acara || '-',
     nama: data.nama || '-',
     status: data.status || 'Hadir',
     keterangan: data.keterangan || '-',
   };
-  addedAbsensiList.unshift(newRecord);
-  mockDb.submitKehadiran(data);
+
+  const existingIdx = addedAbsensiList.findIndex(
+    r => String(r.id) === newId || (`${r.acara}_${r.nama}_${r.waktu}`.toLowerCase() === `${newRecord.acara}_${newRecord.nama}_${newRecord.waktu}`.toLowerCase())
+  );
+  if (existingIdx !== -1) {
+    addedAbsensiList[existingIdx] = newRecord;
+  } else {
+    addedAbsensiList.unshift(newRecord);
+  }
+  mockDb.submitKehadiran({ ...data, id: newId, rowIndex: newRow, waktu: newRecord.waktu });
 
   const gasRes = await callGasApi<any>('submitKehadiran', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
@@ -607,9 +667,20 @@ export async function fetchLaporan(): Promise<LaporanItem[]> {
   const mergeResults = (baseList: LaporanItem[]) => {
     const filtered = baseList.filter(l => !isDeleted(l)).map(applyEdit);
     const added = addedLaporanList.filter(l => !isDeleted(l)).map(applyEdit);
-    const existingIds = new Set(filtered.map(l => String(l.id || l.rowIndex)));
-    const uniqueAdded = added.filter(l => !existingIds.has(String(l.id || l.rowIndex)));
-    return [...uniqueAdded, ...filtered];
+    const combined = [...added, ...filtered];
+
+    const seen = new Set<string>();
+    const result: LaporanItem[] = [];
+    for (const item of combined) {
+      const keyId = String(item.id || item.rowIndex);
+      const contentKey = `${item.divisi}_${item.namaPelapor}_${item.periode}`.toLowerCase();
+      if (!seen.has(keyId) && !seen.has(contentKey)) {
+        seen.add(keyId);
+        seen.add(contentKey);
+        result.push(item);
+      }
+    }
+    return result;
   };
 
   // 1. Try Google Apps Script API Bridge
@@ -677,11 +748,12 @@ export async function insertLaporan(data: Partial<LaporanItem>) {
     now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
     ' ' +
     now.toLocaleTimeString('id-ID');
-  const newId = now.getTime().toString();
+  const newId = String(data.id || now.getTime());
+  const newRow = Number(data.rowIndex) || now.getTime();
   const newRecord: LaporanItem = {
-    rowIndex: now.getTime(),
+    rowIndex: newRow,
     id: newId,
-    waktu: formattedDate,
+    waktu: data.waktu || formattedDate,
     divisi: data.divisi || '-',
     namaPelapor: data.namaPelapor || '-',
     periode: data.periode || 'Pekan 1',
@@ -690,8 +762,16 @@ export async function insertLaporan(data: Partial<LaporanItem>) {
     evaluasi: data.evaluasi || '-',
     laporanDana: data.laporanDana || '-',
   };
-  addedLaporanList.unshift(newRecord);
-  mockDb.submitLaporan(data);
+
+  const existingIdx = addedLaporanList.findIndex(
+    l => String(l.id) === newId || (`${l.divisi}_${l.namaPelapor}_${l.periode}`.toLowerCase() === `${newRecord.divisi}_${newRecord.namaPelapor}_${newRecord.periode}`.toLowerCase())
+  );
+  if (existingIdx !== -1) {
+    addedLaporanList[existingIdx] = newRecord;
+  } else {
+    addedLaporanList.unshift(newRecord);
+  }
+  mockDb.submitLaporan({ ...data, id: newId, rowIndex: newRow, waktu: newRecord.waktu });
 
   const gasRes = await callGasApi<any>('submitLaporanDivisi', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
