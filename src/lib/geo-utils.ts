@@ -3,24 +3,90 @@ export function deg2rad(deg: number): number {
 }
 
 /**
- * Robust coordinate parser: handles numbers, strings, and Indonesian comma decimals (e.g. "-6,917456")
+ * Robust coordinate parser: handles numbers, strings, Indonesian comma decimals (e.g. "-6,917456"),
+ * and repairs multiple dots / thousand separators added by Indonesian Google Sheets (e.g. "-67.771.517" or "1.084.148.205")
  */
-export function parseCoordinate(val: any): number {
+export function parseCoordinate(val: any, type?: 'lat' | 'lng'): number {
   if (val === null || val === undefined || val === '') return NaN;
-  if (typeof val === 'number') return isNaN(val) ? NaN : val;
+  if (typeof val === 'number') {
+    if (isNaN(val)) return NaN;
+    if (type === 'lat' && (val < -15 || val > 10)) {
+      val = String(val);
+    } else if (type === 'lng' && (val < 90 || val > 150)) {
+      val = String(val);
+    } else {
+      return val;
+    }
+  }
+
   const str = String(val)
     .replace(/['"]/g, '')
-    .trim()
-    .replace(',', '.');
-  const num = parseFloat(str);
-  return isNaN(num) ? NaN : num;
+    .trim();
+
+  // If already standard float: e.g. "-6.7771517" or "-6,7771517"
+  const commaOrDotCount = (str.match(/[.,]/g) || []).length;
+  if (commaOrDotCount === 1) {
+    const num = parseFloat(str.replace(',', '.'));
+    if (!isNaN(num)) {
+      if (type === 'lat' && num >= -15 && num <= 10) return num;
+      if (type === 'lng' && num >= 90 && num <= 150) return num;
+      if (!type) return num;
+    }
+  }
+
+  // Handle multiple dots / thousand separators formatted by Indonesian Google Sheets
+  // e.g. "-67.771.517" -> -6.7771517, "1.084.148.205" -> 108.4148205
+  const digits = str.replace(/[^\d-]/g, '');
+  if (digits) {
+    if (type === 'lat' || (!type && digits.startsWith('-'))) {
+      // In Indonesia, Latitude is -0.x to -11.x (commonly -6.x, -7.x, -8.x)
+      const match = digits.match(/^(-[1-9])(\d+)$/);
+      if (match) {
+        const repaired = parseFloat(`${match[1]}.${match[2]}`);
+        if (!isNaN(repaired) && repaired >= -15 && repaired <= 10) {
+          return repaired;
+        }
+      }
+      const match2 = digits.match(/^(-1[0-2])(\d+)$/);
+      if (match2) {
+        const repaired = parseFloat(`${match2[1]}.${match2[2]}`);
+        if (!isNaN(repaired) && repaired >= -15 && repaired <= 10) {
+          return repaired;
+        }
+      }
+    }
+
+    if (type === 'lng' || (!type && !digits.startsWith('-'))) {
+      // In Indonesia, Longitude is 95.x to 141.x (e.g. 106.x, 107.x, 108.x)
+      if (digits.startsWith('1')) {
+        const match = digits.match(/^([1][0-4]\d)(\d+)$/);
+        if (match) {
+          const repaired = parseFloat(`${match[1]}.${match[2]}`);
+          if (!isNaN(repaired) && repaired >= 90 && repaired <= 150) {
+            return repaired;
+          }
+        }
+      } else if (digits.startsWith('9')) {
+        const match = digits.match(/^(9\d)(\d+)$/);
+        if (match) {
+          const repaired = parseFloat(`${match[1]}.${match[2]}`);
+          if (!isNaN(repaired) && repaired >= 90 && repaired <= 150) {
+            return repaired;
+          }
+        }
+      }
+    }
+  }
+
+  const standardNum = parseFloat(str.replace(',', '.'));
+  return isNaN(standardNum) ? NaN : standardNum;
 }
 
 export function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const pLat1 = parseCoordinate(lat1);
-  const pLon1 = parseCoordinate(lon1);
-  const pLat2 = parseCoordinate(lat2);
-  const pLon2 = parseCoordinate(lon2);
+  const pLat1 = parseCoordinate(lat1, 'lat');
+  const pLon1 = parseCoordinate(lon1, 'lng');
+  const pLat2 = parseCoordinate(lat2, 'lat');
+  const pLon2 = parseCoordinate(lon2, 'lng');
 
   if (isNaN(pLat1) || isNaN(pLon1) || isNaN(pLat2) || isNaN(pLon2)) {
     return 0;

@@ -222,8 +222,16 @@ export default function SalAppPage() {
       return;
     }
 
-    const targetLat = parseCoordinate(selectedAcaraObj?.lat);
-    const targetLng = parseCoordinate(selectedAcaraObj?.lng);
+    let targetLat = parseCoordinate(selectedAcaraObj?.lat, 'lat');
+    let targetLng = parseCoordinate(selectedAcaraObj?.lng, 'lng');
+
+    if ((isNaN(targetLat) || isNaN(targetLng) || !targetLat || !targetLng) && selectedAcaraObj?.mapLink) {
+      const extracted = extractCoordinates(selectedAcaraObj.mapLink);
+      if (extracted.lat && extracted.lng) {
+        targetLat = parseCoordinate(extracted.lat, 'lat');
+        targetLng = parseCoordinate(extracted.lng, 'lng');
+      }
+    }
 
     if (isNaN(targetLat) || isNaN(targetLng) || !targetLat || !targetLng) {
       setLocationStatus('free');

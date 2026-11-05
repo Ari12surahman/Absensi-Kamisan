@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import * as XLSX from 'xlsx';
 import { mockDb } from './mock-db';
 import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem } from '@/types';
+import { parseCoordinate, extractCoordinates } from './geo-utils';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1YC8IBmPgw7bFtJ7GVCZSaunQuD62hUg677S8pcOZHMs';
 const CLIENT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -322,17 +323,36 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
   // 2. Try Public Google Sheets CSV export
   const csvRows = await fetchCsvSheet('Data_Acara');
   if (csvRows && csvRows.length > 1) {
-    const list = csvRows.slice(1).map((row, index) => ({
-      rowIndex: index + 2,
-      id: String(row[0] || index + 1),
-      namaAcara: String(row[1] || '').trim(),
-      tanggalAcara: String(row[2] || ''),
-      isHidden: String(row[3]).toLowerCase() === 'true',
-      mapLink: String(row[4] || ''),
-      lat: row[5] ? String(row[5]).replace(/['"]/g, '').replace(',', '.').trim() : '',
-      lng: row[6] ? String(row[6]).replace(/['"]/g, '').replace(',', '.').trim() : '',
-      radius: parseInt(String(row[7])) || 150,
-    })).filter(a => a.namaAcara !== '').reverse();
+    const list = csvRows.slice(1).map((row, index) => {
+      let lat = row[5] ? String(row[5]).replace(/['"]/g, '').trim() : '';
+      let lng = row[6] ? String(row[6]).replace(/['"]/g, '').trim() : '';
+      const mapLink = String(row[4] || '');
+
+      const pLat = parseCoordinate(lat, 'lat');
+      const pLng = parseCoordinate(lng, 'lng');
+      if (!isNaN(pLat)) lat = String(pLat);
+      if (!isNaN(pLng)) lng = String(pLng);
+
+      if ((!lat || !lng || isNaN(pLat) || isNaN(pLng)) && mapLink) {
+        const extracted = extractCoordinates(mapLink);
+        if (extracted.lat && extracted.lng) {
+          lat = extracted.lat;
+          lng = extracted.lng;
+        }
+      }
+
+      return {
+        rowIndex: index + 2,
+        id: String(row[0] || index + 1),
+        namaAcara: String(row[1] || '').trim(),
+        tanggalAcara: String(row[2] || ''),
+        isHidden: String(row[3]).toLowerCase() === 'true',
+        mapLink,
+        lat,
+        lng,
+        radius: parseInt(String(row[7])) || 150,
+      };
+    }).filter(a => a.namaAcara !== '').reverse();
     if (list.length > 0) return mergeResults(list);
   }
 
