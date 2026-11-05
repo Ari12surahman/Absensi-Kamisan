@@ -29,27 +29,31 @@ function getGoogleSheetsClient() {
 /**
  * Universal Bridge to call Google Apps Script Web App
  */
-async function callGasApi<T>(action: string, payload?: any, method: 'GET' | 'POST' = 'GET'): Promise<T | null> {
+async function callGasApi<T>(action: string, payload?: any, method: 'GET' | 'POST' = 'POST'): Promise<T | null> {
   if (!GAS_URL) return null;
 
   try {
     let url = GAS_URL;
     const options: RequestInit = {
       redirect: 'follow',
-      headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
     };
 
-    if (method === 'GET') {
+    if (method === 'POST') {
+      options.method = 'POST';
+      // Use text/plain;charset=utf-8 to prevent CORS preflight issues on Google Apps Script
+      options.headers = { 'Content-Type': 'text/plain;charset=utf-8' };
+      options.body = JSON.stringify({ action, ...payload });
+    } else {
       url += (url.includes('?') ? '&' : '?') + `action=${encodeURIComponent(action)}`;
       if (payload) {
         for (const k of Object.keys(payload)) {
-          url += `&${encodeURIComponent(k)}=${encodeURIComponent(payload[k])}`;
+          if (payload[k] !== undefined && payload[k] !== null) {
+            const val = typeof payload[k] === 'object' ? JSON.stringify(payload[k]) : String(payload[k]);
+            url += `&${encodeURIComponent(k)}=${encodeURIComponent(val)}`;
+          }
         }
       }
-    } else {
-      options.method = 'POST';
-      options.body = JSON.stringify({ action, ...payload });
     }
 
     const res = await fetch(url, options);
@@ -58,8 +62,17 @@ async function callGasApi<T>(action: string, payload?: any, method: 'GET' | 'POS
     if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
       return JSON.parse(text) as T;
     }
+
+    // If POST returned HTML or was redirected, retry via GET query parameters fallback
+    if (method === 'POST') {
+      return callGasApi<T>(action, payload, 'GET');
+    }
+
     return null;
   } catch (err) {
+    if (method === 'POST') {
+      return callGasApi<T>(action, payload, 'GET');
+    }
     console.warn(`GAS Bridge error for ${action}:`, err);
     return null;
   }
@@ -434,17 +447,24 @@ export async function updateAcara(rowIndex: number | string, data: Partial<Acara
   return { success: true, message: 'Data acara berhasil diperbarui!' };
 }
 
-export async function toggleStatusAcara(rowIndex: number | string, hideStatus: boolean) {
+export async function toggleStatusAcara(rowIndex: number | string, hideStatus: boolean, id?: string, nama?: string) {
   const existing = editedAcaraMap.get(String(rowIndex)) || {};
   editedAcaraMap.set(String(rowIndex), { ...existing, isHidden: hideStatus });
+  if (id) editedAcaraMap.set(String(id), { ...(editedAcaraMap.get(String(id)) || {}), isHidden: hideStatus });
+  if (nama) editedAcaraMap.set(nama.trim().toLowerCase(), { ...(editedAcaraMap.get(nama.trim().toLowerCase()) || {}), isHidden: hideStatus });
 
-  const idx = addedAcaraList.findIndex(a => String(a.id) === String(rowIndex) || String(a.rowIndex) === String(rowIndex));
+  const idx = addedAcaraList.findIndex(a =>
+    String(a.id) === String(rowIndex) ||
+    String(a.rowIndex) === String(rowIndex) ||
+    (id && String(a.id) === String(id)) ||
+    (nama && a.namaAcara.toLowerCase() === nama.toLowerCase())
+  );
   if (idx !== -1) {
     addedAcaraList[idx] = { ...addedAcaraList[idx], isHidden: hideStatus };
   }
   mockDb.toggleStatusAcara(rowIndex, hideStatus);
 
-  const gasRes = await callGasApi<any>('toggleStatusAcara', { rowIndex, hideStatus }, 'POST');
+  const gasRes = await callGasApi<any>('toggleStatusAcara', { rowIndex, hideStatus, id, nama: nama || '' }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
   return { success: true, message: hideStatus ? 'Acara disembunyikan!' : 'Acara kembali aktif!' };
 }

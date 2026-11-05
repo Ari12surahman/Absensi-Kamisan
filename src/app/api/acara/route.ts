@@ -23,10 +23,10 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, rowIndex, isHidden, data, ...rest } = body;
+    const { id, rowIndex, isHidden, nama, namaAcara, data, ...rest } = body;
     const targetRow = rowIndex || id;
     if (typeof isHidden === 'boolean') {
-      await toggleStatusAcara(targetRow, isHidden);
+      await toggleStatusAcara(targetRow, isHidden, id, nama || namaAcara);
       return NextResponse.json({ success: true, message: isHidden ? 'Acara disembunyikan!' : 'Acara kembali aktif!' });
     }
     const payload = data || rest;

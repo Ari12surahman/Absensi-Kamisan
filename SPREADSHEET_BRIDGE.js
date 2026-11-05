@@ -18,16 +18,44 @@ const SHEET_ID = '1YC8IBmPgw7bFtJ7GVCZSaunQuD62hUg677S8pcOZHMs';
 const ADMIN_PASSWORD = 'admin123';
 
 function doGet(e) {
-  var action = (e && e.parameter) ? e.parameter.action : null;
+  var p = (e && e.parameter) ? e.parameter : {};
+  var action = p.action;
   if (action) {
-    var result = [];
+    var result = null;
     if (action === 'getAcara') result = getAcara();
     else if (action === 'getAbsensi') result = getAbsensi();
     else if (action === 'getDivisi') result = getDivisi();
     else if (action === 'getLaporanDivisi') result = getLaporanDivisi();
-    
-    return ContentService.createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
+    else if (action === 'toggleStatusAcara') {
+      var hide = p.hideStatus === 'true' || p.hideStatus === true || p.hideStatus === '1';
+      result = toggleStatusAcara(p.rowIndex, hide, p.id, p.nama);
+    }
+    else if (action === 'addAcara') {
+      result = addAcara({
+        namaAcara: p.namaAcara,
+        tanggalAcara: p.tanggalAcara,
+        mapLink: p.mapLink,
+        lat: p.lat,
+        lng: p.lng,
+        radius: p.radius
+      });
+    }
+    else if (action === 'deleteAcara') {
+      result = deleteAcara(p.rowIndex, p.id, p.nama);
+    }
+    else if (action === 'submitKehadiran') {
+      result = submitKehadiran({
+        acara: p.acara,
+        nama: p.nama,
+        status: p.status,
+        keterangan: p.keterangan
+      });
+    }
+
+    if (result !== null) {
+      return ContentService.createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   }
 
   return ContentService.createTextOutput(JSON.stringify({
@@ -45,29 +73,29 @@ function doPost(e) {
     var result = { success: false, message: "Action tidak dikenal: " + action };
 
     if (action === 'submitKehadiran') {
-      result = submitKehadiran(data.payload);
+      result = submitKehadiran(data.payload || data);
     } else if (action === 'updateAbsensi') {
-      result = updateAbsensi(Number(data.rowIndex), data.payload);
+      result = updateAbsensi(Number(data.rowIndex), data.payload || data);
     } else if (action === 'deleteAbsensi') {
       result = deleteAbsensi(Number(data.rowIndex));
     } else if (action === 'addAcara') {
-      result = addAcara(data.payload);
+      result = addAcara(data.payload || data);
     } else if (action === 'updateAcara') {
-      result = updateAcara(Number(data.rowIndex), data.payload);
+      result = updateAcara(Number(data.rowIndex), data.payload || data);
     } else if (action === 'deleteAcara') {
-      result = deleteAcara(Number(data.rowIndex));
+      result = deleteAcara(Number(data.rowIndex), data.id, data.nama);
     } else if (action === 'toggleStatusAcara') {
-      result = toggleStatusAcara(Number(data.rowIndex), data.hideStatus);
+      result = toggleStatusAcara(data.rowIndex, data.hideStatus, data.id, data.namaAcara || data.nama);
     } else if (action === 'addDivisi') {
-      result = addDivisi(data.payload);
+      result = addDivisi(data.payload || data);
     } else if (action === 'updateDivisi') {
-      result = updateDivisi(Number(data.rowIndex), data.payload);
+      result = updateDivisi(Number(data.rowIndex), data.payload || data);
     } else if (action === 'deleteDivisi') {
       result = deleteDivisi(Number(data.rowIndex));
     } else if (action === 'submitLaporanDivisi') {
-      result = submitLaporanDivisi(data.payload);
+      result = submitLaporanDivisi(data.payload || data);
     } else if (action === 'updateLaporanDivisi') {
-      result = updateLaporanDivisi(Number(data.rowIndex), data.payload);
+      result = updateLaporanDivisi(Number(data.rowIndex), data.payload || data);
     } else if (action === 'deleteLaporanDivisi') {
       result = deleteLaporanDivisi(Number(data.rowIndex));
     }
@@ -136,36 +164,72 @@ function getAcara() {
 
 function addAcara(data) {
   const sheet = getDbSheet('Data_Acara');
-  const id = new Date().getTime().toString();
+  const id = (data && data.id) ? String(data.id) : new Date().getTime().toString();
   const coords = extractCoordinates(data.mapLink);
+  const latVal = (data.lat !== undefined && data.lat !== '') ? data.lat : coords.lat;
+  const lngVal = (data.lng !== undefined && data.lng !== '') ? data.lng : coords.lng;
+  
   sheet.getRange("F:G").setNumberFormat('@');
-  sheet.appendRow([id, data.namaAcara, data.tanggalAcara, 'FALSE', data.mapLink || '', coords.lat, coords.lng, data.radius || 150]);
-  return { success: true, message: "Acara berhasil ditambahkan!" };
+  sheet.appendRow([id, data.namaAcara, data.tanggalAcara, 'FALSE', data.mapLink || '', latVal, lngVal, Number(data.radius) || 150]);
+  return { success: true, message: "Acara berhasil ditambahkan!", id: id };
+}
+
+function findAcaraRow(sheet, rowIndex, id, nama) {
+  var targetRow = Number(rowIndex);
+  var lastRow = sheet.getLastRow();
+  var values = sheet.getDataRange().getValues();
+  
+  // Jika targetRow valid dan ID-nya sesuai
+  if (targetRow >= 2 && targetRow <= lastRow) {
+    if (!id && !nama) return targetRow;
+    var rowData = values[targetRow - 1];
+    if (id && String(rowData[0]) === String(id)) return targetRow;
+    if (nama && String(rowData[1]).trim().toLowerCase() === String(nama).trim().toLowerCase()) return targetRow;
+  }
+  
+  // Cari di seluruh baris berdasarkan ID atau Nama Acara
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (id && String(r[0]) === String(id)) return i + 1;
+    if (nama && String(r[1]).trim().toLowerCase() === String(nama).trim().toLowerCase()) return i + 1;
+  }
+  
+  return targetRow >= 2 && targetRow <= lastRow ? targetRow : -1;
 }
 
 function updateAcara(rowIndex, data) {
   const sheet = getDbSheet('Data_Acara');
+  const targetRow = findAcaraRow(sheet, rowIndex, data.id, data.namaAcara);
+  if (targetRow === -1) return { success: false, message: "Acara tidak ditemukan di sheet" };
+  
   const coords = extractCoordinates(data.mapLink);
   sheet.getRange("F:G").setNumberFormat('@');
-  sheet.getRange(rowIndex, 2).setValue(data.namaAcara);
-  sheet.getRange(rowIndex, 3).setValue(data.tanggalAcara);
-  sheet.getRange(rowIndex, 5).setValue(data.mapLink || '');
-  if (coords.lat) sheet.getRange(rowIndex, 6).setValue(coords.lat);
-  if (coords.lng) sheet.getRange(rowIndex, 7).setValue(coords.lng);
-  sheet.getRange(rowIndex, 8).setValue(data.radius || 150);
+  sheet.getRange(targetRow, 2).setValue(data.namaAcara);
+  sheet.getRange(targetRow, 3).setValue(data.tanggalAcara);
+  sheet.getRange(targetRow, 5).setValue(data.mapLink || '');
+  
+  const latVal = (data.lat !== undefined && data.lat !== '') ? data.lat : coords.lat;
+  const lngVal = (data.lng !== undefined && data.lng !== '') ? data.lng : coords.lng;
+  if (latVal) sheet.getRange(targetRow, 6).setValue(latVal);
+  if (lngVal) sheet.getRange(targetRow, 7).setValue(lngVal);
+  sheet.getRange(targetRow, 8).setValue(Number(data.radius) || 150);
   return { success: true, message: "Acara berhasil diupdate!" };
 }
 
-function deleteAcara(rowIndex) {
+function deleteAcara(rowIndex, id, nama) {
   const sheet = getDbSheet('Data_Acara');
-  sheet.deleteRow(rowIndex);
+  const targetRow = findAcaraRow(sheet, rowIndex, id, nama);
+  if (targetRow === -1) return { success: false, message: "Acara tidak ditemukan" };
+  sheet.deleteRow(targetRow);
   return { success: true, message: "Acara berhasil dihapus!" };
 }
 
-function toggleStatusAcara(rowIndex, hideStatus) {
+function toggleStatusAcara(rowIndex, hideStatus, id, nama) {
   try {
     const sheet = getDbSheet('Data_Acara');
-    sheet.getRange(rowIndex, 4).setValue(hideStatus ? 'TRUE' : 'FALSE');
+    const targetRow = findAcaraRow(sheet, rowIndex, id, nama);
+    if (targetRow === -1) return { success: false, message: "Baris acara tidak ditemukan" };
+    sheet.getRange(targetRow, 4).setValue(hideStatus ? 'TRUE' : 'FALSE');
     return { success: true, message: hideStatus ? "Acara berhasil disembunyikan!" : "Acara kembali ditampilkan!" };
   } catch (error) {
     return { success: false, message: "Error: " + error.toString() };

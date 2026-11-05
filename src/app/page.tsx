@@ -200,6 +200,16 @@ export default function SalAppPage() {
     return acaraList.find(a => a.namaAcara === formAbsenAcara);
   }, [acaraList, formAbsenAcara]);
 
+  // Auto-select or sync selected acara when events load or get hidden
+  useEffect(() => {
+    const visible = acaraList.filter(a => !a.isHidden);
+    if (visible.length === 1 && !formAbsenAcara) {
+      setFormAbsenAcara(visible[0].namaAcara);
+    } else if (formAbsenAcara && !visible.some(a => a.namaAcara === formAbsenAcara)) {
+      setFormAbsenAcara(visible.length > 0 ? visible[0].namaAcara : '');
+    }
+  }, [acaraList, formAbsenAcara]);
+
   // Geolocation Geofence Tracker
   const checkLocation = () => {
     if (formAbsenStatus === 'Izin' || formAbsenStatus === 'Sakit') {
@@ -618,7 +628,7 @@ export default function SalAppPage() {
     await fetch('/api/acara', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: item.id, rowIndex: item.rowIndex, isHidden: newStatus }),
+      body: JSON.stringify({ id: item.id, rowIndex: item.rowIndex, isHidden: newStatus, namaAcara: item.namaAcara }),
     });
     showToast(newStatus ? 'Acara disembunyikan!' : 'Acara kembali aktif!');
     fetchAcaraData();
