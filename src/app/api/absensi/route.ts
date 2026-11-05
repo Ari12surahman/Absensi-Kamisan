@@ -23,8 +23,10 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, rowIndex, data } = body;
-    await updateAbsensi(rowIndex || id, data);
+    const { id, rowIndex, data, ...rest } = body;
+    const targetRow = rowIndex || id;
+    const payload = data || rest;
+    await updateAbsensi(targetRow, payload);
     return NextResponse.json({ success: true, message: 'Data presensi berhasil diperbarui!' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
@@ -37,7 +39,7 @@ export async function DELETE(req: Request) {
     const id = searchParams.get('id');
     const rowIndex = searchParams.get('rowIndex');
     if (!id && !rowIndex) return NextResponse.json({ success: false, message: 'ID diperlukan' }, { status: 400 });
-    await deleteAbsensi(rowIndex || id!);
+    await deleteAbsensi(rowIndex || id!, id || undefined);
     return NextResponse.json({ success: true, message: 'Presensi berhasil dihapus!' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

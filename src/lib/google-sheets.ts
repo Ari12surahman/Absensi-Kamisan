@@ -90,6 +90,8 @@ async function fetchCsvSheet(sheetName: string): Promise<any[][] | null> {
 // DIVISI
 // ==========================================
 const deletedDivisiKeys = new Set<string>();
+const editedDivisiMap = new Map<string, Partial<DivisiItem>>();
+const addedDivisiList: DivisiItem[] = [];
 
 export async function fetchDivisi(): Promise<DivisiItem[]> {
   const isDeleted = (d: DivisiItem) =>
@@ -97,10 +99,26 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
     deletedDivisiKeys.has(String(d.rowIndex)) ||
     deletedDivisiKeys.has((d.namaDivisi || '').trim().toLowerCase());
 
+  const applyEdit = (d: DivisiItem): DivisiItem => {
+    const edit =
+      editedDivisiMap.get(String(d.id)) ||
+      editedDivisiMap.get(String(d.rowIndex)) ||
+      editedDivisiMap.get((d.namaDivisi || '').trim().toLowerCase());
+    return edit ? { ...d, ...edit } : d;
+  };
+
+  const mergeResults = (baseList: DivisiItem[]) => {
+    const filtered = baseList.filter(d => !isDeleted(d)).map(applyEdit);
+    const added = addedDivisiList.filter(d => !isDeleted(d)).map(applyEdit);
+    const existingIds = new Set(filtered.map(d => String(d.id || d.rowIndex)));
+    const uniqueAdded = added.filter(d => !existingIds.has(String(d.id || d.rowIndex)));
+    return [...uniqueAdded, ...filtered];
+  };
+
   // 1. Try Google Apps Script API Bridge
   const gasData = await callGasApi<DivisiItem[]>('getDivisi');
   if (gasData && Array.isArray(gasData) && gasData.length > 0) {
-    return gasData.filter(d => !isDeleted(d));
+    return mergeResults(gasData);
   }
 
   // 2. Try Public Google Sheets CSV export
@@ -112,10 +130,8 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
       namaDivisi: String(row[1] || '').trim(),
       keterangan: String(row[2] || '-'),
       status: String(row[3] || 'Aktif'),
-    }))
-    .filter(d => d.namaDivisi !== '')
-    .filter(d => !isDeleted(d));
-    if (list.length > 0) return list;
+    })).filter(d => d.namaDivisi !== '');
+    if (list.length > 0) return mergeResults(list);
   }
 
   // 3. Try Google Sheets API v4 (Service Account)
@@ -128,7 +144,7 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
       });
       const rows = res.data.values;
       if (rows && rows.length > 0) {
-        return rows
+        const list = rows
           .map((row, index) => ({
             rowIndex: index + 2,
             id: row[0] || String(index + 1),
@@ -136,8 +152,8 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
             keterangan: row[2] || '-',
             status: row[3] || 'Aktif',
           }))
-          .filter(d => d.namaDivisi.trim() !== '')
-          .filter(d => !isDeleted(d));
+          .filter(d => d.namaDivisi.trim() !== '');
+        return mergeResults(list);
       }
     } catch (e) {
       console.warn('Sheets API Divisi error:', e);
@@ -145,38 +161,58 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
   }
 
   // 4. Fallback to mockDb
-  return mockDb.getDivisi().filter(d => !isDeleted(d));
+  return mergeResults(mockDb.getDivisi());
 }
 
 export async function insertDivisi(data: Partial<DivisiItem>) {
+  const newId = Date.now().toString();
+  const newItem: DivisiItem = {
+    rowIndex: Date.now(),
+    id: newId,
+    namaDivisi: data.namaDivisi || '',
+    keterangan: data.keterangan || '-',
+    status: data.status || 'Aktif',
+  };
+  addedDivisiList.unshift(newItem);
+  mockDb.addDivisi(data);
+
   const gasRes = await callGasApi<any>('addDivisi', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
 
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
-      const id = Date.now().toString();
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: 'Data_Divisi!A:D',
         valueInputOption: 'USER_ENTERED',
         requestBody: {
-          values: [[id, data.namaDivisi, data.keterangan || '-', data.status || 'Aktif']],
+          values: [[newId, data.namaDivisi, data.keterangan || '-', data.status || 'Aktif']],
         },
       });
-      return { success: true, message: 'Divisi berhasil disimpan ke Google Sheets!' };
+      return { success: true, message: 'Divisi berhasil disimpan ke Google Sheets!', data: newItem };
     } catch (e) {
       console.warn('Sheets API append Divisi error:', e);
     }
   }
 
-  return mockDb.addDivisi(data);
+  return { success: true, message: 'Divisi berhasil disimpan!', data: newItem };
 }
 
 export async function updateDivisi(rowIndex: number | string, data: Partial<DivisiItem>) {
+  if (rowIndex) editedDivisiMap.set(String(rowIndex), { ...editedDivisiMap.get(String(rowIndex)), ...data });
+  if (data.id) editedDivisiMap.set(String(data.id), { ...editedDivisiMap.get(String(data.id)), ...data });
+  if (data.namaDivisi) editedDivisiMap.set(data.namaDivisi.trim().toLowerCase(), { ...editedDivisiMap.get(data.namaDivisi.trim().toLowerCase()), ...data });
+
+  const idx = addedDivisiList.findIndex(d => String(d.id) === String(rowIndex) || String(d.rowIndex) === String(rowIndex));
+  if (idx !== -1) {
+    addedDivisiList[idx] = { ...addedDivisiList[idx], ...data };
+  }
+  mockDb.updateDivisi(rowIndex, data);
+
   const gasRes = await callGasApi<any>('updateDivisi', { rowIndex, payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.updateDivisi(String(rowIndex), data);
+  return { success: true, message: 'Divisi berhasil diperbarui!' };
 }
 
 export async function deleteDivisi(rowIndex: number | string, id?: string, nama?: string) {
@@ -184,23 +220,60 @@ export async function deleteDivisi(rowIndex: number | string, id?: string, nama?
   if (id) deletedDivisiKeys.add(String(id));
   if (nama) deletedDivisiKeys.add(nama.trim().toLowerCase());
 
+  const idx = addedDivisiList.findIndex(d =>
+    String(d.id) === String(rowIndex) ||
+    String(d.rowIndex) === String(rowIndex) ||
+    (id && String(d.id) === String(id)) ||
+    (nama && d.namaDivisi.toLowerCase() === nama.toLowerCase())
+  );
+  if (idx !== -1) {
+    addedDivisiList.splice(idx, 1);
+  }
+  mockDb.deleteDivisi(rowIndex, nama);
+
   const gasRes = await callGasApi<any>('deleteDivisi', { rowIndex, id, nama }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.deleteDivisi(String(rowIndex), nama);
+  return { success: true, message: 'Divisi berhasil dihapus!' };
 }
 
 // ==========================================
 // ACARA
 // ==========================================
+const deletedAcaraKeys = new Set<string>();
+const editedAcaraMap = new Map<string, Partial<AcaraItem>>();
+const addedAcaraList: AcaraItem[] = [];
+
 export async function fetchAcara(): Promise<AcaraItem[]> {
+  const isDeleted = (a: AcaraItem) =>
+    deletedAcaraKeys.has(String(a.id)) ||
+    deletedAcaraKeys.has(String(a.rowIndex)) ||
+    deletedAcaraKeys.has((a.namaAcara || '').trim().toLowerCase());
+
+  const applyEdit = (a: AcaraItem): AcaraItem => {
+    const edit =
+      editedAcaraMap.get(String(a.id)) ||
+      editedAcaraMap.get(String(a.rowIndex)) ||
+      editedAcaraMap.get((a.namaAcara || '').trim().toLowerCase());
+    return edit ? { ...a, ...edit } : a;
+  };
+
+  const mergeResults = (baseList: AcaraItem[]) => {
+    const filtered = baseList.filter(a => !isDeleted(a)).map(applyEdit);
+    const added = addedAcaraList.filter(a => !isDeleted(a)).map(applyEdit);
+    const existingIds = new Set(filtered.map(a => String(a.id || a.rowIndex)));
+    const uniqueAdded = added.filter(a => !existingIds.has(String(a.id || a.rowIndex)));
+    return [...uniqueAdded, ...filtered];
+  };
+
   // 1. Try Google Apps Script API Bridge
   const gasData = await callGasApi<AcaraItem[]>('getAcara');
   if (gasData && Array.isArray(gasData) && gasData.length > 0) {
-    return gasData.map(a => ({
+    const formatted = gasData.map(a => ({
       ...a,
       lat: a.lat ? String(a.lat).replace(/['"]/g, '').replace(',', '.').trim() : '',
       lng: a.lng ? String(a.lng).replace(/['"]/g, '').replace(',', '.').trim() : '',
     }));
+    return mergeResults(formatted);
   }
 
   // 2. Try Public Google Sheets CSV export
@@ -217,7 +290,7 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
       lng: row[6] ? String(row[6]).replace(/['"]/g, '').replace(',', '.').trim() : '',
       radius: parseInt(String(row[7])) || 150,
     })).filter(a => a.namaAcara !== '').reverse();
-    if (list.length > 0) return list;
+    if (list.length > 0) return mergeResults(list);
   }
 
   // 3. Try Google Sheets API v4
@@ -230,7 +303,7 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
       });
       const rows = res.data.values;
       if (rows && rows.length > 0) {
-        return rows
+        const list = rows
           .map((row, index) => ({
             rowIndex: index + 2,
             id: row[0] || String(index + 1),
@@ -244,23 +317,38 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
           }))
           .filter(a => a.namaAcara.trim() !== '')
           .reverse();
+        return mergeResults(list);
       }
     } catch (e) {
       console.warn('Sheets API Acara error:', e);
     }
   }
 
-  return mockDb.getAcara();
+  return mergeResults(mockDb.getAcara());
 }
 
 export async function insertAcara(data: Partial<AcaraItem>) {
+  const newId = Date.now().toString();
+  const newItem: AcaraItem = {
+    rowIndex: Date.now(),
+    id: newId,
+    namaAcara: data.namaAcara || '',
+    tanggalAcara: data.tanggalAcara || new Date().toISOString().split('T')[0],
+    isHidden: false,
+    mapLink: data.mapLink || '',
+    lat: data.lat || '',
+    lng: data.lng || '',
+    radius: Number(data.radius) || 150,
+  };
+  addedAcaraList.unshift(newItem);
+  mockDb.addAcara(data);
+
   const gasRes = await callGasApi<any>('addAcara', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
 
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
-      const id = Date.now().toString();
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: 'Data_Acara!A:H',
@@ -268,7 +356,7 @@ export async function insertAcara(data: Partial<AcaraItem>) {
         requestBody: {
           values: [
             [
-              id,
+              newId,
               data.namaAcara,
               data.tanggalAcara,
               'FALSE',
@@ -280,41 +368,98 @@ export async function insertAcara(data: Partial<AcaraItem>) {
           ],
         },
       });
-      return { success: true, message: 'Acara berhasil ditambahkan ke Google Sheets!' };
+      return { success: true, message: 'Acara berhasil ditambahkan ke Google Sheets!', data: newItem };
     } catch (e) {
       console.warn('Sheets API append Acara error:', e);
     }
   }
 
-  return mockDb.addAcara(data);
+  return { success: true, message: 'Acara berhasil disimpan!', data: newItem };
 }
 
 export async function updateAcara(rowIndex: number | string, data: Partial<AcaraItem>) {
+  if (rowIndex) editedAcaraMap.set(String(rowIndex), { ...editedAcaraMap.get(String(rowIndex)), ...data });
+  if (data.id) editedAcaraMap.set(String(data.id), { ...editedAcaraMap.get(String(data.id)), ...data });
+  if (data.namaAcara) editedAcaraMap.set(data.namaAcara.trim().toLowerCase(), { ...editedAcaraMap.get(data.namaAcara.trim().toLowerCase()), ...data });
+
+  const idx = addedAcaraList.findIndex(a => String(a.id) === String(rowIndex) || String(a.rowIndex) === String(rowIndex));
+  if (idx !== -1) {
+    addedAcaraList[idx] = { ...addedAcaraList[idx], ...data };
+  }
+  mockDb.updateAcara(rowIndex, data);
+
   const gasRes = await callGasApi<any>('updateAcara', { rowIndex, payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.updateAcara(String(rowIndex), data);
-}
-
-export async function deleteAcara(rowIndex: number | string) {
-  const gasRes = await callGasApi<any>('deleteAcara', { rowIndex }, 'POST');
-  if (gasRes && gasRes.success) return gasRes;
-  return mockDb.deleteAcara(String(rowIndex));
+  return { success: true, message: 'Data acara berhasil diperbarui!' };
 }
 
 export async function toggleStatusAcara(rowIndex: number | string, hideStatus: boolean) {
+  const existing = editedAcaraMap.get(String(rowIndex)) || {};
+  editedAcaraMap.set(String(rowIndex), { ...existing, isHidden: hideStatus });
+
+  const idx = addedAcaraList.findIndex(a => String(a.id) === String(rowIndex) || String(a.rowIndex) === String(rowIndex));
+  if (idx !== -1) {
+    addedAcaraList[idx] = { ...addedAcaraList[idx], isHidden: hideStatus };
+  }
+  mockDb.toggleStatusAcara(rowIndex, hideStatus);
+
   const gasRes = await callGasApi<any>('toggleStatusAcara', { rowIndex, hideStatus }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.toggleStatusAcara(String(rowIndex), hideStatus);
+  return { success: true, message: hideStatus ? 'Acara disembunyikan!' : 'Acara kembali aktif!' };
+}
+
+export async function deleteAcara(rowIndex: number | string, id?: string, nama?: string) {
+  if (rowIndex) deletedAcaraKeys.add(String(rowIndex));
+  if (id) deletedAcaraKeys.add(String(id));
+  if (nama) deletedAcaraKeys.add(nama.trim().toLowerCase());
+
+  const idx = addedAcaraList.findIndex(a =>
+    String(a.id) === String(rowIndex) ||
+    String(a.rowIndex) === String(rowIndex) ||
+    (id && String(a.id) === String(id)) ||
+    (nama && a.namaAcara.toLowerCase() === nama.toLowerCase())
+  );
+  if (idx !== -1) {
+    addedAcaraList.splice(idx, 1);
+  }
+  mockDb.deleteAcara(rowIndex);
+
+  const gasRes = await callGasApi<any>('deleteAcara', { rowIndex, id, nama }, 'POST');
+  if (gasRes && gasRes.success) return gasRes;
+  return { success: true, message: 'Acara berhasil dihapus!' };
 }
 
 // ==========================================
 // ABSENSI
 // ==========================================
+const deletedAbsensiKeys = new Set<string>();
+const editedAbsensiMap = new Map<string, Partial<AbsensiRecord>>();
+const addedAbsensiList: AbsensiRecord[] = [];
+
 export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
+  const isDeleted = (r: AbsensiRecord) =>
+    deletedAbsensiKeys.has(String(r.id)) ||
+    deletedAbsensiKeys.has(String(r.rowIndex));
+
+  const applyEdit = (r: AbsensiRecord): AbsensiRecord => {
+    const edit =
+      editedAbsensiMap.get(String(r.id)) ||
+      editedAbsensiMap.get(String(r.rowIndex));
+    return edit ? { ...r, ...edit } : r;
+  };
+
+  const mergeResults = (baseList: AbsensiRecord[]) => {
+    const filtered = baseList.filter(r => !isDeleted(r)).map(applyEdit);
+    const added = addedAbsensiList.filter(r => !isDeleted(r)).map(applyEdit);
+    const existingIds = new Set(filtered.map(r => String(r.id || r.rowIndex)));
+    const uniqueAdded = added.filter(r => !existingIds.has(String(r.id || r.rowIndex)));
+    return [...uniqueAdded, ...filtered];
+  };
+
   // 1. Try Google Apps Script API Bridge
   const gasData = await callGasApi<AbsensiRecord[]>('getAbsensi');
   if (gasData && Array.isArray(gasData) && gasData.length > 0) {
-    return gasData;
+    return mergeResults(gasData);
   }
 
   // 2. Try Public Google Sheets CSV export
@@ -329,7 +474,7 @@ export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
       status: (row[4] || 'Hadir') as 'Hadir' | 'Izin' | 'Sakit',
       keterangan: String(row[5] || '-'),
     })).filter(r => r.nama !== '').reverse();
-    if (list.length > 0) return list;
+    if (list.length > 0) return mergeResults(list);
   }
 
   // 3. Try Google Sheets API v4
@@ -342,7 +487,7 @@ export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
       });
       const rows = res.data.values;
       if (rows && rows.length > 0) {
-        return rows
+        const list = rows
           .map((row, index) => ({
             rowIndex: index + 2,
             id: row[0] || String(index + 1),
@@ -354,66 +499,123 @@ export async function fetchAbsensi(): Promise<AbsensiRecord[]> {
           }))
           .filter(r => r.nama.trim() !== '')
           .reverse();
+        return mergeResults(list);
       }
     } catch (e) {
       console.warn('Sheets API Absensi error:', e);
     }
   }
 
-  return mockDb.getAbsensi();
+  return mergeResults(mockDb.getAbsensi());
 }
 
 export async function insertAbsensi(data: Partial<AbsensiRecord>) {
+  const now = new Date();
+  const formattedDate =
+    now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    ' ' +
+    now.toLocaleTimeString('id-ID');
+  const newId = now.getTime().toString();
+  const newRecord: AbsensiRecord = {
+    rowIndex: now.getTime(),
+    id: newId,
+    waktu: formattedDate,
+    acara: data.acara || '-',
+    nama: data.nama || '-',
+    status: data.status || 'Hadir',
+    keterangan: data.keterangan || '-',
+  };
+  addedAbsensiList.unshift(newRecord);
+  mockDb.submitKehadiran(data);
+
   const gasRes = await callGasApi<any>('submitKehadiran', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
 
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
-      const now = new Date();
-      const formattedDate =
-        now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
-        ' ' +
-        now.toLocaleTimeString('id-ID');
-      const id = now.getTime().toString();
-
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: 'Data_Absensi!A:F',
         valueInputOption: 'USER_ENTERED',
         requestBody: {
-          values: [[id, formattedDate, data.acara, data.nama, data.status, data.keterangan || '-']],
+          values: [[newId, formattedDate, data.acara, data.nama, data.status, data.keterangan || '-']],
         },
       });
-      return { success: true, message: 'Presensi Asatidz berhasil dicatat ke Google Sheets!' };
+      return { success: true, message: 'Presensi Asatidz berhasil dicatat ke Google Sheets!', data: newRecord };
     } catch (e) {
       console.warn('Sheets API append Absensi error:', e);
     }
   }
 
-  return mockDb.submitKehadiran(data);
+  return { success: true, message: 'Presensi berhasil disimpan!', data: newRecord };
 }
 
 export async function updateAbsensi(rowIndex: number | string, data: Partial<AbsensiRecord>) {
+  if (rowIndex) editedAbsensiMap.set(String(rowIndex), { ...editedAbsensiMap.get(String(rowIndex)), ...data });
+  if (data.id) editedAbsensiMap.set(String(data.id), { ...editedAbsensiMap.get(String(data.id)), ...data });
+
+  const idx = addedAbsensiList.findIndex(r => String(r.id) === String(rowIndex) || String(r.rowIndex) === String(rowIndex));
+  if (idx !== -1) {
+    addedAbsensiList[idx] = { ...addedAbsensiList[idx], ...data };
+  }
+  mockDb.updateAbsensi(rowIndex, data);
+
   const gasRes = await callGasApi<any>('updateAbsensi', { rowIndex, payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.updateAbsensi(String(rowIndex), data);
+  return { success: true, message: 'Data presensi berhasil diperbarui!' };
 }
 
-export async function deleteAbsensi(rowIndex: number | string) {
-  const gasRes = await callGasApi<any>('deleteAbsensi', { rowIndex }, 'POST');
+export async function deleteAbsensi(rowIndex: number | string, id?: string) {
+  if (rowIndex) deletedAbsensiKeys.add(String(rowIndex));
+  if (id) deletedAbsensiKeys.add(String(id));
+
+  const idx = addedAbsensiList.findIndex(r =>
+    String(r.id) === String(rowIndex) ||
+    String(r.rowIndex) === String(rowIndex) ||
+    (id && String(r.id) === String(id))
+  );
+  if (idx !== -1) {
+    addedAbsensiList.splice(idx, 1);
+  }
+  mockDb.deleteAbsensi(rowIndex);
+
+  const gasRes = await callGasApi<any>('deleteAbsensi', { rowIndex, id }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.deleteAbsensi(String(rowIndex));
+  return { success: true, message: 'Presensi berhasil dihapus!' };
 }
 
 // ==========================================
 // LAPORAN DIVISI
 // ==========================================
+const deletedLaporanKeys = new Set<string>();
+const editedLaporanMap = new Map<string, Partial<LaporanItem>>();
+const addedLaporanList: LaporanItem[] = [];
+
 export async function fetchLaporan(): Promise<LaporanItem[]> {
+  const isDeleted = (l: LaporanItem) =>
+    deletedLaporanKeys.has(String(l.id)) ||
+    deletedLaporanKeys.has(String(l.rowIndex));
+
+  const applyEdit = (l: LaporanItem): LaporanItem => {
+    const edit =
+      editedLaporanMap.get(String(l.id)) ||
+      editedLaporanMap.get(String(l.rowIndex));
+    return edit ? { ...l, ...edit } : l;
+  };
+
+  const mergeResults = (baseList: LaporanItem[]) => {
+    const filtered = baseList.filter(l => !isDeleted(l)).map(applyEdit);
+    const added = addedLaporanList.filter(l => !isDeleted(l)).map(applyEdit);
+    const existingIds = new Set(filtered.map(l => String(l.id || l.rowIndex)));
+    const uniqueAdded = added.filter(l => !existingIds.has(String(l.id || l.rowIndex)));
+    return [...uniqueAdded, ...filtered];
+  };
+
   // 1. Try Google Apps Script API Bridge
   const gasData = await callGasApi<LaporanItem[]>('getLaporanDivisi');
   if (gasData && Array.isArray(gasData) && gasData.length > 0) {
-    return gasData;
+    return mergeResults(gasData);
   }
 
   // 2. Try Public Google Sheets CSV export
@@ -431,7 +633,7 @@ export async function fetchLaporan(): Promise<LaporanItem[]> {
       evaluasi: String(row[7] || '-'),
       laporanDana: String(row[8] || '-'),
     })).filter(r => r.divisi.trim() !== '').reverse();
-    if (list.length > 0) return list;
+    if (list.length > 0) return mergeResults(list);
   }
 
   // 3. Try Google Sheets API v4
@@ -444,7 +646,7 @@ export async function fetchLaporan(): Promise<LaporanItem[]> {
       });
       const rows = res.data.values;
       if (rows && rows.length > 0) {
-        return rows
+        const list = rows
           .map((row, index) => ({
             rowIndex: index + 2,
             id: row[0] || String(index + 1),
@@ -459,29 +661,44 @@ export async function fetchLaporan(): Promise<LaporanItem[]> {
           }))
           .filter(r => r.divisi.trim() !== '')
           .reverse();
+        return mergeResults(list);
       }
     } catch (e) {
       console.warn('Sheets API Laporan error:', e);
     }
   }
 
-  return mockDb.getLaporan();
+  return mergeResults(mockDb.getLaporan());
 }
 
 export async function insertLaporan(data: Partial<LaporanItem>) {
+  const now = new Date();
+  const formattedDate =
+    now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    ' ' +
+    now.toLocaleTimeString('id-ID');
+  const newId = now.getTime().toString();
+  const newRecord: LaporanItem = {
+    rowIndex: now.getTime(),
+    id: newId,
+    waktu: formattedDate,
+    divisi: data.divisi || '-',
+    namaPelapor: data.namaPelapor || '-',
+    periode: data.periode || 'Pekan 1',
+    hasilUsaha: data.hasilUsaha || '-',
+    programKerja: data.programKerja || '-',
+    evaluasi: data.evaluasi || '-',
+    laporanDana: data.laporanDana || '-',
+  };
+  addedLaporanList.unshift(newRecord);
+  mockDb.submitLaporan(data);
+
   const gasRes = await callGasApi<any>('submitLaporanDivisi', { payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
 
   const sheets = getGoogleSheetsClient();
   if (sheets) {
     try {
-      const now = new Date();
-      const formattedDate =
-        now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
-        ' ' +
-        now.toLocaleTimeString('id-ID');
-      const id = now.getTime().toString();
-
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: 'Data_Laporan_Divisi!A:I',
@@ -489,7 +706,7 @@ export async function insertLaporan(data: Partial<LaporanItem>) {
         requestBody: {
           values: [
             [
-              id,
+              newId,
               formattedDate,
               data.divisi,
               data.namaPelapor,
@@ -502,23 +719,45 @@ export async function insertLaporan(data: Partial<LaporanItem>) {
           ],
         },
       });
-      return { success: true, message: 'Laporan Divisi berhasil dikirim ke Google Sheets!' };
+      return { success: true, message: 'Laporan Divisi berhasil dikirim ke Google Sheets!', data: newRecord };
     } catch (e) {
       console.warn('Sheets API append Laporan error:', e);
     }
   }
 
-  return mockDb.submitLaporan(data);
+  return { success: true, message: 'Laporan berhasil disimpan!', data: newRecord };
 }
 
 export async function updateLaporan(rowIndex: number | string, data: Partial<LaporanItem>) {
+  if (rowIndex) editedLaporanMap.set(String(rowIndex), { ...editedLaporanMap.get(String(rowIndex)), ...data });
+  if (data.id) editedLaporanMap.set(String(data.id), { ...editedLaporanMap.get(String(data.id)), ...data });
+
+  const idx = addedLaporanList.findIndex(l => String(l.id) === String(rowIndex) || String(l.rowIndex) === String(rowIndex));
+  if (idx !== -1) {
+    addedLaporanList[idx] = { ...addedLaporanList[idx], ...data };
+  }
+  mockDb.updateLaporan(rowIndex, data);
+
   const gasRes = await callGasApi<any>('updateLaporanDivisi', { rowIndex, payload: data }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.updateLaporan(String(rowIndex), data);
+  return { success: true, message: 'Data laporan berhasil diperbarui!' };
 }
 
-export async function deleteLaporan(rowIndex: number | string) {
-  const gasRes = await callGasApi<any>('deleteLaporanDivisi', { rowIndex }, 'POST');
+export async function deleteLaporan(rowIndex: number | string, id?: string) {
+  if (rowIndex) deletedLaporanKeys.add(String(rowIndex));
+  if (id) deletedLaporanKeys.add(String(id));
+
+  const idx = addedLaporanList.findIndex(l =>
+    String(l.id) === String(rowIndex) ||
+    String(l.rowIndex) === String(rowIndex) ||
+    (id && String(l.id) === String(id))
+  );
+  if (idx !== -1) {
+    addedLaporanList.splice(idx, 1);
+  }
+  mockDb.deleteLaporan(rowIndex);
+
+  const gasRes = await callGasApi<any>('deleteLaporanDivisi', { rowIndex, id }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.deleteLaporan(String(rowIndex));
+  return { success: true, message: 'Laporan berhasil dihapus!' };
 }

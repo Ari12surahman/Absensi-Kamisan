@@ -10,6 +10,7 @@ import {
   Calendar,
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   HelpCircle,
   RefreshCw,
   Search,
@@ -134,6 +135,41 @@ export default function SalAppPage() {
   const [modalDetailLaporan, setModalDetailLaporan] = useState<{ open: boolean; item?: LaporanItem }>({ open: false });
   const [modalEditLaporan, setModalEditLaporan] = useState<{ open: boolean; item?: LaporanItem }>({ open: false });
 
+  // Custom Confirmation Dialog Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    isDanger?: boolean;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const requestConfirm = (options: {
+    title?: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    isDanger?: boolean;
+    onConfirm: () => void;
+  }) => {
+    setConfirmModal({
+      open: true,
+      title: options.title || 'Konfirmasi Tindakan',
+      message: options.message,
+      confirmLabel: options.confirmLabel || 'Lanjutkan',
+      cancelLabel: options.cancelLabel || 'Batal',
+      isDanger: options.isDanger !== false,
+      onConfirm: options.onConfirm,
+    });
+  };
+
   // Clock Effect
   useEffect(() => {
     const updateTime = () => {
@@ -220,13 +256,64 @@ export default function SalAppPage() {
     checkLocation();
   }, [formAbsenAcara, formAbsenStatus, selectedAcaraObj]);
 
-  // Data Fetchers
+  // LocalStorage Helpers for offline / instant persistence
+  const getStoredList = <T,>(key: string): T[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch {
+      return [];
+    }
+  };
+
+  const saveStoredList = <T,>(key: string, list: T[]) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch {}
+  };
+
+  const addStoredKey = (storageKey: string, idOrKey: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const list = getStoredList<string>(storageKey);
+      if (!list.includes(idOrKey)) {
+        list.push(idOrKey);
+        saveStoredList(storageKey, list);
+      }
+    } catch {}
+  };
+
+  // Data Fetchers with Hybrid Local Sync
   const fetchAbsensiData = async () => {
     setLoadingAbsensi(true);
     try {
       const res = await fetch('/api/absensi');
       const json = await res.json();
-      if (json.success) setAbsensiList(json.data || []);
+      if (json.success) {
+        const deletedKeys = getStoredList<string>('salapp_deleted_absensi');
+        const customAdded = getStoredList<AbsensiRecord>('salapp_custom_absensi');
+        const editedMap = new Map<string, Partial<AbsensiRecord>>(
+          getStoredList<[string, Partial<AbsensiRecord>]>('salapp_edited_absensi')
+        );
+
+        let merged = (json.data || []).map((r: AbsensiRecord) => {
+          const edit = editedMap.get(String(r.id)) || editedMap.get(String(r.rowIndex));
+          return edit ? { ...r, ...edit } : r;
+        }).filter((r: AbsensiRecord) =>
+          !deletedKeys.includes(String(r.id)) &&
+          !deletedKeys.includes(String(r.rowIndex))
+        );
+
+        const existingIds = new Set(merged.map((r: AbsensiRecord) => String(r.id || r.rowIndex)));
+        const uniqueCustom = customAdded.filter(
+          r => !existingIds.has(String(r.id || r.rowIndex)) &&
+               !deletedKeys.includes(String(r.id)) &&
+               !deletedKeys.includes(String(r.rowIndex))
+        );
+
+        setAbsensiList([...uniqueCustom, ...merged]);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -239,33 +326,40 @@ export default function SalAppPage() {
     try {
       const res = await fetch('/api/acara');
       const json = await res.json();
-      if (json.success) setAcaraList(json.data || []);
+      if (json.success) {
+        const deletedKeys = getStoredList<string>('salapp_deleted_acara');
+        const customAdded = getStoredList<AcaraItem>('salapp_custom_acara');
+        const editedMap = new Map<string, Partial<AcaraItem>>(
+          getStoredList<[string, Partial<AcaraItem>]>('salapp_edited_acara')
+        );
+
+        let merged = (json.data || []).map((a: AcaraItem) => {
+          const edit =
+            editedMap.get(String(a.id)) ||
+            editedMap.get(String(a.rowIndex)) ||
+            (a.namaAcara ? editedMap.get(a.namaAcara.trim().toLowerCase()) : undefined);
+          return edit ? { ...a, ...edit } : a;
+        }).filter((a: AcaraItem) =>
+          !deletedKeys.includes(String(a.id)) &&
+          !deletedKeys.includes(String(a.rowIndex)) &&
+          !deletedKeys.includes((a.namaAcara || '').trim().toLowerCase())
+        );
+
+        const existingIds = new Set(merged.map((a: AcaraItem) => String(a.id || a.rowIndex)));
+        const uniqueCustom = customAdded.filter(
+          a => !existingIds.has(String(a.id || a.rowIndex)) &&
+               !deletedKeys.includes(String(a.id)) &&
+               !deletedKeys.includes(String(a.rowIndex)) &&
+               !deletedKeys.includes((a.namaAcara || '').trim().toLowerCase())
+        );
+
+        setAcaraList([...uniqueCustom, ...merged]);
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoadingAcara(false);
     }
-  };
-
-  // Helper to persist locally deleted divisi so they never reappear
-  const getDeletedDivisi = (): string[] => {
-    if (typeof window === 'undefined') return [];
-    try {
-      return JSON.parse(localStorage.getItem('salapp_deleted_divisi') || '[]');
-    } catch {
-      return [];
-    }
-  };
-
-  const addDeletedDivisi = (key: string) => {
-    if (typeof window === 'undefined') return;
-    try {
-      const list = getDeletedDivisi();
-      if (!list.includes(key)) {
-        list.push(key);
-        localStorage.setItem('salapp_deleted_divisi', JSON.stringify(list));
-      }
-    } catch {}
   };
 
   const fetchDivisiData = async () => {
@@ -274,14 +368,33 @@ export default function SalAppPage() {
       const res = await fetch('/api/divisi');
       const json = await res.json();
       if (json.success) {
-        const deletedKeys = getDeletedDivisi();
-        const cleanData = (json.data || []).filter(
-          (d: DivisiItem) =>
-            !deletedKeys.includes(String(d.id)) &&
-            !deletedKeys.includes(String(d.rowIndex)) &&
-            !deletedKeys.includes((d.namaDivisi || '').trim().toLowerCase())
+        const deletedKeys = getStoredList<string>('salapp_deleted_divisi');
+        const customAdded = getStoredList<DivisiItem>('salapp_custom_divisi');
+        const editedMap = new Map<string, Partial<DivisiItem>>(
+          getStoredList<[string, Partial<DivisiItem>]>('salapp_edited_divisi')
         );
-        setDivisiList(cleanData);
+
+        let merged = (json.data || []).map((d: DivisiItem) => {
+          const edit =
+            editedMap.get(String(d.id)) ||
+            editedMap.get(String(d.rowIndex)) ||
+            (d.namaDivisi ? editedMap.get(d.namaDivisi.trim().toLowerCase()) : undefined);
+          return edit ? { ...d, ...edit } : d;
+        }).filter((d: DivisiItem) =>
+          !deletedKeys.includes(String(d.id)) &&
+          !deletedKeys.includes(String(d.rowIndex)) &&
+          !deletedKeys.includes((d.namaDivisi || '').trim().toLowerCase())
+        );
+
+        const existingIds = new Set(merged.map((d: DivisiItem) => String(d.id || d.rowIndex)));
+        const uniqueCustom = customAdded.filter(
+          d => !existingIds.has(String(d.id || d.rowIndex)) &&
+               !deletedKeys.includes(String(d.id)) &&
+               !deletedKeys.includes(String(d.rowIndex)) &&
+               !deletedKeys.includes((d.namaDivisi || '').trim().toLowerCase())
+        );
+
+        setDivisiList([...uniqueCustom, ...merged]);
       }
     } catch (e) {
       console.error(e);
@@ -295,12 +408,186 @@ export default function SalAppPage() {
     try {
       const res = await fetch('/api/laporan');
       const json = await res.json();
-      if (json.success) setLaporanList(json.data || []);
+      if (json.success) {
+        const deletedKeys = getStoredList<string>('salapp_deleted_laporan');
+        const customAdded = getStoredList<LaporanItem>('salapp_custom_laporan');
+        const editedMap = new Map<string, Partial<LaporanItem>>(
+          getStoredList<[string, Partial<LaporanItem>]>('salapp_edited_laporan')
+        );
+
+        let merged = (json.data || []).map((l: LaporanItem) => {
+          const edit = editedMap.get(String(l.id)) || editedMap.get(String(l.rowIndex));
+          return edit ? { ...l, ...edit } : l;
+        }).filter((l: LaporanItem) =>
+          !deletedKeys.includes(String(l.id)) &&
+          !deletedKeys.includes(String(l.rowIndex))
+        );
+
+        const existingIds = new Set(merged.map((l: LaporanItem) => String(l.id || l.rowIndex)));
+        const uniqueCustom = customAdded.filter(
+          l => !existingIds.has(String(l.id || l.rowIndex)) &&
+               !deletedKeys.includes(String(l.id)) &&
+               !deletedKeys.includes(String(l.rowIndex))
+        );
+
+        setLaporanList([...uniqueCustom, ...merged]);
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoadingLaporan(false);
     }
+  };
+
+  // Delete & Toggle Handlers using Custom UI Confirm
+  const handleDeleteAbsensi = (item: AbsensiRecord) => {
+    requestConfirm({
+      title: 'Hapus Catatan Presensi',
+      message: `Apakah Anda yakin ingin menghapus data presensi asatidz "${item.nama}" pada kegiatan "${item.acara}"? Tindakan ini tidak dapat dibatalkan.`,
+      confirmLabel: 'Ya, Hapus Presensi',
+      isDanger: true,
+      onConfirm: async () => {
+        const key = String(item.id || item.rowIndex);
+        addStoredKey('salapp_deleted_absensi', key);
+        if (item.id) addStoredKey('salapp_deleted_absensi', String(item.id));
+        if (item.rowIndex) addStoredKey('salapp_deleted_absensi', String(item.rowIndex));
+
+        const customList = getStoredList<AbsensiRecord>('salapp_custom_absensi').filter(
+          r => String(r.id) !== key && String(r.rowIndex) !== key
+        );
+        saveStoredList('salapp_custom_absensi', customList);
+
+        setAbsensiList(prev =>
+          prev.filter(r => (item.id ? r.id !== item.id : true) && (item.rowIndex ? r.rowIndex !== item.rowIndex : true))
+        );
+
+        await fetch(`/api/absensi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+        showToast('Presensi berhasil dihapus!');
+        fetchAbsensiData();
+      },
+    });
+  };
+
+  const handleDeleteAcara = (item: AcaraItem) => {
+    requestConfirm({
+      title: 'Hapus Agenda Acara',
+      message: `Apakah Anda yakin ingin menghapus agenda kegiatan "${item.namaAcara}"? Tindakan ini tidak dapat dibatalkan.`,
+      confirmLabel: 'Ya, Hapus Acara',
+      isDanger: true,
+      onConfirm: async () => {
+        const key = String(item.id || item.rowIndex);
+        addStoredKey('salapp_deleted_acara', key);
+        if (item.id) addStoredKey('salapp_deleted_acara', String(item.id));
+        if (item.rowIndex) addStoredKey('salapp_deleted_acara', String(item.rowIndex));
+        if (item.namaAcara) addStoredKey('salapp_deleted_acara', item.namaAcara.trim().toLowerCase());
+
+        const customList = getStoredList<AcaraItem>('salapp_custom_acara').filter(
+          a => String(a.id) !== key && String(a.rowIndex) !== key && a.namaAcara.toLowerCase() !== item.namaAcara.toLowerCase()
+        );
+        saveStoredList('salapp_custom_acara', customList);
+
+        setAcaraList(prev =>
+          prev.filter(
+            a =>
+              (item.id ? a.id !== item.id : true) &&
+              (item.rowIndex ? a.rowIndex !== item.rowIndex : true) &&
+              a.namaAcara !== item.namaAcara
+          )
+        );
+
+        await fetch(`/api/acara?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.namaAcara)}`, { method: 'DELETE' });
+        showToast('Acara berhasil dihapus!');
+        fetchAcaraData();
+      },
+    });
+  };
+
+  const handleToggleStatusAcara = async (item: AcaraItem) => {
+    const newStatus = !item.isHidden;
+    const key = String(item.id || item.rowIndex);
+
+    setAcaraList(prev =>
+      prev.map(a =>
+        (a.id && a.id === item.id) || (a.rowIndex && a.rowIndex === item.rowIndex)
+          ? { ...a, isHidden: newStatus }
+          : a
+      )
+    );
+
+    const editedList = getStoredList<[string, Partial<AcaraItem>]>('salapp_edited_acara');
+    const idx = editedList.findIndex(([k]) => k === key);
+    if (idx !== -1) editedList[idx] = [key, { ...editedList[idx][1], isHidden: newStatus }];
+    else editedList.push([key, { isHidden: newStatus }]);
+    saveStoredList('salapp_edited_acara', editedList);
+
+    await fetch('/api/acara', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, rowIndex: item.rowIndex, isHidden: newStatus }),
+    });
+    showToast(newStatus ? 'Acara disembunyikan!' : 'Acara kembali aktif!');
+    fetchAcaraData();
+  };
+
+  const handleDeleteLaporan = (item: LaporanItem) => {
+    requestConfirm({
+      title: 'Hapus Laporan Divisi',
+      message: `Apakah Anda yakin ingin menghapus laporan "${item.divisi} (${item.periode})"?`,
+      confirmLabel: 'Ya, Hapus Laporan',
+      isDanger: true,
+      onConfirm: async () => {
+        const key = String(item.id || item.rowIndex);
+        addStoredKey('salapp_deleted_laporan', key);
+        if (item.id) addStoredKey('salapp_deleted_laporan', String(item.id));
+        if (item.rowIndex) addStoredKey('salapp_deleted_laporan', String(item.rowIndex));
+
+        const customList = getStoredList<LaporanItem>('salapp_custom_laporan').filter(
+          l => String(l.id) !== key && String(l.rowIndex) !== key
+        );
+        saveStoredList('salapp_custom_laporan', customList);
+
+        setLaporanList(prev =>
+          prev.filter(
+            l => (item.id ? l.id !== item.id : true) && (item.rowIndex ? l.rowIndex !== item.rowIndex : true)
+          )
+        );
+
+        await fetch(`/api/laporan?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+        showToast('Laporan berhasil dihapus!');
+        fetchLaporanData();
+      },
+    });
+  };
+
+  const handleDeleteDivisi = (item: DivisiItem) => {
+    requestConfirm({
+      title: 'Hapus Divisi',
+      message: `Apakah Anda yakin ingin menghapus divisi "${item.namaDivisi}"?`,
+      confirmLabel: 'Ya, Hapus Divisi',
+      isDanger: true,
+      onConfirm: async () => {
+        const key = String(item.id || item.rowIndex);
+        addStoredKey('salapp_deleted_divisi', key);
+        if (item.id) addStoredKey('salapp_deleted_divisi', String(item.id));
+        if (item.rowIndex) addStoredKey('salapp_deleted_divisi', String(item.rowIndex));
+        if (item.namaDivisi) addStoredKey('salapp_deleted_divisi', item.namaDivisi.trim().toLowerCase());
+
+        const customList = getStoredList<DivisiItem>('salapp_custom_divisi').filter(
+          d => String(d.id) !== key && String(d.rowIndex) !== key && d.namaDivisi.toLowerCase() !== item.namaDivisi.toLowerCase()
+        );
+        saveStoredList('salapp_custom_divisi', customList);
+
+        setDivisiList(prev =>
+          prev.filter(
+            d => (item.id ? d.id !== item.id : true) && (item.rowIndex ? d.rowIndex !== item.rowIndex : true) && d.namaDivisi !== item.namaDivisi
+          )
+        );
+
+        await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.namaDivisi)}`, { method: 'DELETE' });
+        showToast('Divisi berhasil dihapus!');
+        fetchDivisiData();
+      },
+    });
   };
 
   // On Switch to Admin -> Fetch data on-demand (lazy)
@@ -348,6 +635,20 @@ export default function SalAppPage() {
       const json = await res.json();
       if (json.success) {
         showToast('Presensi Asatidz berhasil dicatat!');
+        const newRecord: AbsensiRecord = {
+          id: json.data?.id || Date.now().toString(),
+          rowIndex: json.data?.rowIndex || Date.now(),
+          waktu: json.data?.waktu || (new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + new Date().toLocaleTimeString('id-ID')),
+          acara: formAbsenAcara,
+          nama: formAbsenNama.trim(),
+          status: formAbsenStatus,
+          keterangan: formAbsenKet.trim() || (locationDistance !== null ? `Jarak GPS: ${formatDistance(locationDistance)}` : 'Hadir Tepat Waktu'),
+        };
+        const customAbsen = getStoredList<AbsensiRecord>('salapp_custom_absensi');
+        customAbsen.unshift(newRecord);
+        saveStoredList('salapp_custom_absensi', customAbsen);
+        setAbsensiList(prev => [newRecord, ...prev]);
+
         setFormAbsenNama('');
         setFormAbsenKet('');
         setFormAbsenStatus('Hadir');
@@ -394,6 +695,23 @@ export default function SalAppPage() {
       const json = await res.json();
       if (json.success) {
         showToast('Laporan Divisi berhasil dikirim!');
+        const newLap: LaporanItem = {
+          id: json.data?.id || Date.now().toString(),
+          rowIndex: json.data?.rowIndex || Date.now(),
+          waktu: json.data?.waktu || (new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + new Date().toLocaleTimeString('id-ID')),
+          divisi: lapDivisi,
+          namaPelapor: lapPelapor.trim(),
+          periode: lapPeriode,
+          hasilUsaha: lapHasil.trim() || '-',
+          programKerja: lapProker.trim() || '-',
+          evaluasi: lapEvaluasi.trim() || '-',
+          laporanDana: combinedBudget,
+        };
+        const customLap = getStoredList<LaporanItem>('salapp_custom_laporan');
+        customLap.unshift(newLap);
+        saveStoredList('salapp_custom_laporan', customLap);
+        setLaporanList(prev => [newLap, ...prev]);
+
         setLapHasil('');
         setLapProker('');
         setLapEvaluasi('');
@@ -1441,13 +1759,7 @@ export default function SalAppPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={async () => {
-                                if (confirm('Yakin ingin menghapus presensi ini?')) {
-                                  await fetch(`/api/absensi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
-                                  showToast('Presensi berhasil dihapus!');
-                                  fetchAbsensiData();
-                                }
-                              }}
+                              onClick={() => handleDeleteAbsensi(item)}
                               className="px-3.5 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
                             >
                               <Trash2 size={14} />
@@ -1532,13 +1844,7 @@ export default function SalAppPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    if (confirm('Yakin ingin menghapus presensi ini?')) {
-                                      await fetch(`/api/absensi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
-                                      showToast('Presensi berhasil dihapus!');
-                                      fetchAbsensiData();
-                                    }
-                                  }}
+                                  onClick={() => handleDeleteAbsensi(item)}
                                   className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
                                   title="Hapus Presensi"
                                 >
@@ -1661,15 +1967,7 @@ export default function SalAppPage() {
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={async () => {
-                                await fetch('/api/acara', {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ id: item.id, rowIndex: item.rowIndex, isHidden: !item.isHidden }),
-                                });
-                                showToast('Status acara diubah!');
-                                fetchAcaraData();
-                              }}
+                              onClick={() => handleToggleStatusAcara(item)}
                               className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition active:scale-95"
                               title={item.isHidden ? 'Tampilkan' : 'Sembunyikan'}
                             >
@@ -1685,13 +1983,7 @@ export default function SalAppPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={async () => {
-                                if (confirm('Yakin ingin menghapus acara ini?')) {
-                                  await fetch(`/api/acara?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
-                                  showToast('Acara berhasil dihapus!');
-                                  fetchAcaraData();
-                                }
-                              }}
+                              onClick={() => handleDeleteAcara(item)}
                               className="p-2 rounded-xl bg-error-container text-error hover:bg-red-200 transition active:scale-95"
                               title="Hapus Acara"
                             >
@@ -1740,15 +2032,7 @@ export default function SalAppPage() {
                           <td className="p-4 text-center whitespace-nowrap">
                             <button
                               type="button"
-                              onClick={async () => {
-                                await fetch('/api/acara', {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ id: item.id, rowIndex: item.rowIndex, isHidden: !item.isHidden }),
-                                });
-                                showToast('Status acara diubah!');
-                                fetchAcaraData();
-                              }}
+                              onClick={() => handleToggleStatusAcara(item)}
                               className="text-on-surface-variant hover:text-primary p-2 rounded-xl hover:bg-surface-container transition mr-1"
                               title={item.isHidden ? 'Tampilkan' : 'Sembunyikan'}
                             >
@@ -1764,13 +2048,7 @@ export default function SalAppPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={async () => {
-                                if (confirm('Yakin ingin menghapus acara ini?')) {
-                                  await fetch(`/api/acara?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
-                                  showToast('Acara berhasil dihapus!');
-                                  fetchAcaraData();
-                                }
-                              }}
+                              onClick={() => handleDeleteAcara(item)}
                               className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
                               title="Hapus Acara"
                             >
@@ -1893,14 +2171,7 @@ export default function SalAppPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={async () => {
-                              if (confirm('Yakin ingin menghapus laporan ini?')) {
-                                setLaporanList(prev => prev.filter(l => (item.id ? l.id !== item.id : true) && (item.rowIndex ? l.rowIndex !== item.rowIndex : true)));
-                                await fetch(`/api/laporan?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
-                                showToast('Laporan berhasil dihapus!');
-                                fetchLaporanData();
-                              }
-                            }}
+                            onClick={() => handleDeleteLaporan(item)}
                             className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
                           >
                             <Trash2 size={14} />
@@ -1961,13 +2232,7 @@ export default function SalAppPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={async () => {
-                                if (confirm('Yakin ingin menghapus laporan ini?')) {
-                                  await fetch(`/api/laporan?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
-                                  showToast('Laporan berhasil dihapus!');
-                                  fetchLaporanData();
-                                }
-                              }}
+                              onClick={() => handleDeleteLaporan(item)}
                               className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
                               title="Hapus Laporan"
                             >
@@ -2067,17 +2332,7 @@ export default function SalAppPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={async () => {
-                              if (confirm('Yakin ingin menghapus divisi ini?')) {
-                                if (item.id) addDeletedDivisi(String(item.id));
-                                if (item.rowIndex) addDeletedDivisi(String(item.rowIndex));
-                                if (item.namaDivisi) addDeletedDivisi(item.namaDivisi.trim().toLowerCase());
-                                setDivisiList(prev => prev.filter(d => (item.id ? d.id !== item.id : true) && d.namaDivisi !== item.namaDivisi));
-                                await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.namaDivisi)}`, { method: 'DELETE' });
-                                showToast('Divisi berhasil dihapus!');
-                                fetchDivisiData();
-                              }
-                            }}
+                            onClick={() => handleDeleteDivisi(item)}
                             className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
                           >
                             <Trash2 size={14} />
@@ -2129,17 +2384,7 @@ export default function SalAppPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={async () => {
-                                if (confirm('Yakin ingin menghapus divisi ini?')) {
-                                  if (item.id) addDeletedDivisi(String(item.id));
-                                  if (item.rowIndex) addDeletedDivisi(String(item.rowIndex));
-                                  if (item.namaDivisi) addDeletedDivisi(item.namaDivisi.trim().toLowerCase());
-                                  setDivisiList(prev => prev.filter(d => (item.id ? d.id !== item.id : true) && d.namaDivisi !== item.namaDivisi));
-                                  await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.namaDivisi)}`, { method: 'DELETE' });
-                                  showToast('Divisi berhasil dihapus!');
-                                  fetchDivisiData();
-                                }
-                              }}
+                              onClick={() => handleDeleteDivisi(item)}
                               className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
                               title="Hapus Divisi"
                             >
@@ -2235,12 +2480,57 @@ export default function SalAppPage() {
                 showToast('Menyimpan data divisi...');
 
                 if (modalDivisi.item) {
+                  const targetItem = modalDivisi.item;
+                  const key = String(targetItem.id || targetItem.rowIndex);
+                  const updatedItem: DivisiItem = {
+                    ...targetItem,
+                    namaDivisi: nama,
+                    keterangan: ket,
+                    status: status as any,
+                  };
+
+                  setDivisiList(prev =>
+                    prev.map(d =>
+                      (d.id && d.id === targetItem.id) || (d.rowIndex && d.rowIndex === targetItem.rowIndex)
+                        ? updatedItem
+                        : d
+                    )
+                  );
+
+                  const editedList = getStoredList<[string, Partial<DivisiItem>]>('salapp_edited_divisi');
+                  const idx = editedList.findIndex(([k]) => k === key);
+                  if (idx !== -1) editedList[idx] = [key, { namaDivisi: nama, keterangan: ket, status }];
+                  else editedList.push([key, { namaDivisi: nama, keterangan: ket, status }]);
+                  saveStoredList('salapp_edited_divisi', editedList);
+
+                  const customList = getStoredList<DivisiItem>('salapp_custom_divisi');
+                  const cIdx = customList.findIndex(d => String(d.id) === key || String(d.rowIndex) === key);
+                  if (cIdx !== -1) {
+                    customList[cIdx] = updatedItem;
+                    saveStoredList('salapp_custom_divisi', customList);
+                  }
+
                   await fetch('/api/divisi', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: modalDivisi.item.id, rowIndex: modalDivisi.item.rowIndex, data: { namaDivisi: nama, keterangan: ket, status } }),
                   });
                 } else {
+                  const newId = Date.now().toString();
+                  const newItem: DivisiItem = {
+                    id: newId,
+                    rowIndex: Date.now(),
+                    namaDivisi: nama,
+                    keterangan: ket,
+                    status: status as any,
+                  };
+
+                  setDivisiList(prev => [newItem, ...prev]);
+
+                  const customList = getStoredList<DivisiItem>('salapp_custom_divisi');
+                  customList.unshift(newItem);
+                  saveStoredList('salapp_custom_divisi', customList);
+
                   await fetch('/api/divisi', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2336,12 +2626,54 @@ export default function SalAppPage() {
                 };
 
                 if (modalAcara.item) {
+                  const targetItem = modalAcara.item;
+                  const key = String(targetItem.id || targetItem.rowIndex);
+                  const updatedItem: AcaraItem = {
+                    ...targetItem,
+                    ...payload,
+                  };
+
+                  setAcaraList(prev =>
+                    prev.map(a =>
+                      (a.id && a.id === targetItem.id) || (a.rowIndex && a.rowIndex === targetItem.rowIndex)
+                        ? updatedItem
+                        : a
+                    )
+                  );
+
+                  const editedList = getStoredList<[string, Partial<AcaraItem>]>('salapp_edited_acara');
+                  const idx = editedList.findIndex(([k]) => k === key);
+                  if (idx !== -1) editedList[idx] = [key, payload];
+                  else editedList.push([key, payload]);
+                  saveStoredList('salapp_edited_acara', editedList);
+
+                  const customList = getStoredList<AcaraItem>('salapp_custom_acara');
+                  const cIdx = customList.findIndex(a => String(a.id) === key || String(a.rowIndex) === key);
+                  if (cIdx !== -1) {
+                    customList[cIdx] = updatedItem;
+                    saveStoredList('salapp_custom_acara', customList);
+                  }
+
                   await fetch('/api/acara', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: modalAcara.item.id, rowIndex: modalAcara.item.rowIndex, ...payload }),
+                    body: JSON.stringify({ id: targetItem.id, rowIndex: targetItem.rowIndex, ...payload }),
                   });
                 } else {
+                  const newId = Date.now().toString();
+                  const newItem: AcaraItem = {
+                    id: newId,
+                    rowIndex: Date.now(),
+                    isHidden: false,
+                    ...payload,
+                  };
+
+                  setAcaraList(prev => [newItem, ...prev]);
+
+                  const customList = getStoredList<AcaraItem>('salapp_custom_acara');
+                  customList.unshift(newItem);
+                  saveStoredList('salapp_custom_acara', customList);
+
                   await fetch('/api/acara', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2553,6 +2885,375 @@ export default function SalAppPage() {
                 className="px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-bold shadow-xs"
               >
                 Tutup Review
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: EDIT DATA PRESENSI ASATIDZ                    */}
+      {/* ==================================================== */}
+      {modalEditAbsen.open && modalEditAbsen.item && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-3xl shadow-2xl border border-surface-container-high w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-surface-container-low px-5 py-4 border-b border-surface-container-high flex justify-between items-center">
+              <h3 className="font-bold text-sm text-on-surface">Edit Data Presensi</h3>
+              <button
+                type="button"
+                onClick={() => setModalEditAbsen({ open: false })}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const nama = (form.elements.namedItem('nama') as HTMLInputElement).value.trim();
+                const acara = (form.elements.namedItem('acara') as HTMLSelectElement).value;
+                const status = (form.elements.namedItem('status') as HTMLSelectElement).value as 'Hadir' | 'Izin' | 'Sakit';
+                const keterangan = (form.elements.namedItem('keterangan') as HTMLInputElement).value.trim();
+
+                const targetItem = modalEditAbsen.item!;
+                setModalEditAbsen({ open: false });
+                showToast('Menyimpan perubahan presensi...');
+
+                const key = String(targetItem.id || targetItem.rowIndex);
+                const updatedItem: AbsensiRecord = {
+                  ...targetItem,
+                  nama,
+                  acara,
+                  status,
+                  keterangan: keterangan || '-',
+                };
+
+                // Optimistic UI update
+                setAbsensiList(prev =>
+                  prev.map(r =>
+                    (r.id && r.id === targetItem.id) || (r.rowIndex && r.rowIndex === targetItem.rowIndex)
+                      ? updatedItem
+                      : r
+                  )
+                );
+
+                // LocalStorage update
+                const editedList = getStoredList<[string, Partial<AbsensiRecord>]>('salapp_edited_absensi');
+                const idx = editedList.findIndex(([k]) => k === key);
+                if (idx !== -1) editedList[idx] = [key, { nama, acara, status, keterangan: keterangan || '-' }];
+                else editedList.push([key, { nama, acara, status, keterangan: keterangan || '-' }]);
+                saveStoredList('salapp_edited_absensi', editedList);
+
+                const customList = getStoredList<AbsensiRecord>('salapp_custom_absensi');
+                const cIdx = customList.findIndex(r => String(r.id) === key || String(r.rowIndex) === key);
+                if (cIdx !== -1) {
+                  customList[cIdx] = updatedItem;
+                  saveStoredList('salapp_custom_absensi', customList);
+                }
+
+                await fetch('/api/absensi', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    id: targetItem.id,
+                    rowIndex: targetItem.rowIndex,
+                    data: { nama, acara, status, keterangan: keterangan || '-' },
+                  }),
+                });
+                showToast('Presensi berhasil diperbarui!');
+                fetchAbsensiData();
+              }}
+              className="p-5 space-y-3.5"
+            >
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">
+                  Nama Lengkap Asatidz <span className="text-error">*</span>
+                </label>
+                <input
+                  name="nama"
+                  defaultValue={modalEditAbsen.item.nama}
+                  required
+                  placeholder="Nama asatidz"
+                  className="w-full border border-surface-container-high rounded-xl p-3 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">
+                  Agenda Acara <span className="text-error">*</span>
+                </label>
+                <select
+                  name="acara"
+                  defaultValue={modalEditAbsen.item.acara}
+                  className="w-full border border-surface-container-high rounded-xl p-3 text-xs outline-none focus:border-primary bg-surface-container-low"
+                >
+                  {acaraList.map((a, i) => (
+                    <option key={a.id || i} value={a.namaAcara}>
+                      {a.namaAcara}
+                    </option>
+                  ))}
+                  {!acaraList.some(a => a.namaAcara === modalEditAbsen.item?.acara) && (
+                    <option value={modalEditAbsen.item.acara}>{modalEditAbsen.item.acara}</option>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Status Kehadiran</label>
+                <select
+                  name="status"
+                  defaultValue={modalEditAbsen.item.status}
+                  className="w-full border border-surface-container-high rounded-xl p-3 text-xs outline-none focus:border-primary bg-surface-container-low"
+                >
+                  <option value="Hadir">Hadir</option>
+                  <option value="Izin">Izin</option>
+                  <option value="Sakit">Sakit</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Keterangan / Lokasi GPS</label>
+                <input
+                  name="keterangan"
+                  defaultValue={modalEditAbsen.item.keterangan || ''}
+                  placeholder="Keterangan kehadiran..."
+                  className="w-full border border-surface-container-high rounded-xl p-3 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold shadow-md transition"
+              >
+                Simpan Perubahan
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: EDIT LAPORAN DIVISI                           */}
+      {/* ==================================================== */}
+      {modalEditLaporan.open && modalEditLaporan.item && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-3xl shadow-2xl border border-surface-container-high w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-surface-container-low px-5 py-4 border-b border-surface-container-high flex justify-between items-center">
+              <h3 className="font-bold text-sm text-on-surface">Edit Laporan Divisi</h3>
+              <button
+                type="button"
+                onClick={() => setModalEditLaporan({ open: false })}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const divisi = (form.elements.namedItem('divisi') as HTMLSelectElement).value;
+                const namaPelapor = (form.elements.namedItem('namaPelapor') as HTMLInputElement).value.trim();
+                const periode = (form.elements.namedItem('periode') as HTMLSelectElement).value;
+                const hasilUsaha = (form.elements.namedItem('hasilUsaha') as HTMLTextAreaElement).value.trim();
+                const programKerja = (form.elements.namedItem('programKerja') as HTMLTextAreaElement).value.trim();
+                const evaluasi = (form.elements.namedItem('evaluasi') as HTMLTextAreaElement).value.trim();
+                const laporanDana = (form.elements.namedItem('laporanDana') as HTMLInputElement).value.trim();
+
+                const targetItem = modalEditLaporan.item!;
+                setModalEditLaporan({ open: false });
+                showToast('Menyimpan perubahan laporan...');
+
+                const key = String(targetItem.id || targetItem.rowIndex);
+                const updatedItem: LaporanItem = {
+                  ...targetItem,
+                  divisi,
+                  namaPelapor,
+                  periode,
+                  hasilUsaha: hasilUsaha || '-',
+                  programKerja: programKerja || '-',
+                  evaluasi: evaluasi || '-',
+                  laporanDana: laporanDana || '-',
+                };
+
+                // Optimistic UI update
+                setLaporanList(prev =>
+                  prev.map(l =>
+                    (l.id && l.id === targetItem.id) || (l.rowIndex && l.rowIndex === targetItem.rowIndex)
+                      ? updatedItem
+                      : l
+                  )
+                );
+
+                // LocalStorage update
+                const editedList = getStoredList<[string, Partial<LaporanItem>]>('salapp_edited_laporan');
+                const idx = editedList.findIndex(([k]) => k === key);
+                if (idx !== -1) editedList[idx] = [key, { divisi, namaPelapor, periode, hasilUsaha, programKerja, evaluasi, laporanDana }];
+                else editedList.push([key, { divisi, namaPelapor, periode, hasilUsaha, programKerja, evaluasi, laporanDana }]);
+                saveStoredList('salapp_edited_laporan', editedList);
+
+                const customList = getStoredList<LaporanItem>('salapp_custom_laporan');
+                const cIdx = customList.findIndex(l => String(l.id) === key || String(l.rowIndex) === key);
+                if (cIdx !== -1) {
+                  customList[cIdx] = updatedItem;
+                  saveStoredList('salapp_custom_laporan', customList);
+                }
+
+                await fetch('/api/laporan', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    id: targetItem.id,
+                    rowIndex: targetItem.rowIndex,
+                    data: { divisi, namaPelapor, periode, hasilUsaha, programKerja, evaluasi, laporanDana },
+                  }),
+                });
+                showToast('Laporan divisi berhasil diperbarui!');
+                fetchLaporanData();
+              }}
+              className="p-5 overflow-y-auto space-y-3.5 text-xs"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-on-surface mb-1">
+                    Divisi <span className="text-error">*</span>
+                  </label>
+                  <select
+                    name="divisi"
+                    defaultValue={modalEditLaporan.item.divisi}
+                    className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                  >
+                    {divisiList.map((d, i) => (
+                      <option key={d.id || i} value={d.namaDivisi}>
+                        {d.namaDivisi}
+                      </option>
+                    ))}
+                    {!divisiList.some(d => d.namaDivisi === modalEditLaporan.item?.divisi) && (
+                      <option value={modalEditLaporan.item.divisi}>{modalEditLaporan.item.divisi}</option>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-on-surface mb-1">
+                    Nama Asatidz Pelapor <span className="text-error">*</span>
+                  </label>
+                  <input
+                    name="namaPelapor"
+                    defaultValue={modalEditLaporan.item.namaPelapor}
+                    required
+                    className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Periode Laporan</label>
+                <select
+                  name="periode"
+                  defaultValue={modalEditLaporan.item.periode}
+                  className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                >
+                  <option value="Pekan 1">Pekan 1</option>
+                  <option value="Pekan 2">Pekan 2</option>
+                  <option value="Pekan 3">Pekan 3</option>
+                  <option value="Pekan 4">Pekan 4</option>
+                  <option value="Bulanan">Bulanan</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Hasil Usaha &amp; Capaian</label>
+                <textarea
+                  name="hasilUsaha"
+                  rows={2}
+                  defaultValue={modalEditLaporan.item.hasilUsaha}
+                  className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Program Kerja Lanjutan</label>
+                <textarea
+                  name="programKerja"
+                  rows={2}
+                  defaultValue={modalEditLaporan.item.programKerja}
+                  className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Evaluasi &amp; Kendala</label>
+                <textarea
+                  name="evaluasi"
+                  rows={2}
+                  defaultValue={modalEditLaporan.item.evaluasi}
+                  className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Laporan Anggaran &amp; Kas</label>
+                <input
+                  name="laporanDana"
+                  defaultValue={modalEditLaporan.item.laporanDana}
+                  placeholder="Pengeluaran: Rp ... | Saldo: Rp ..."
+                  className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold shadow-md transition"
+                >
+                  Simpan Perubahan Laporan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: CUSTOM KONFIRMASI (GANTI ALERT/CONFIRM BROWSER)*/}
+      {/* ==================================================== */}
+      {confirmModal.open && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[100] flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-3xl shadow-2xl border border-surface-container-high w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div
+              className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 border ${
+                confirmModal.isDanger
+                  ? 'bg-error/10 text-error border-error/20'
+                  : 'bg-primary/10 text-primary border-primary/20'
+              }`}
+            >
+              <AlertTriangle size={28} />
+            </div>
+            <h3 className="text-base font-bold text-on-surface mb-2">{confirmModal.title}</h3>
+            <p className="text-xs text-on-surface-variant leading-relaxed mb-6">{confirmModal.message}</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, open: false }))}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-surface-container-high text-xs font-bold text-on-surface hover:bg-surface-container-low transition active:scale-95"
+              >
+                {confirmModal.cancelLabel || 'Batal'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const action = confirmModal.onConfirm;
+                  setConfirmModal(prev => ({ ...prev, open: false }));
+                  action();
+                }}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-md transition active:scale-95 ${
+                  confirmModal.isDanger ? 'bg-error hover:bg-red-700' : 'bg-primary hover:bg-primary-container'
+                }`}
+              >
+                {confirmModal.confirmLabel || 'Lanjutkan'}
               </button>
             </div>
           </div>

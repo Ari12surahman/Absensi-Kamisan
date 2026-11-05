@@ -23,8 +23,10 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, rowIndex, data } = body;
-    await updateDivisi(rowIndex || id, data);
+    const { id, rowIndex, data, ...rest } = body;
+    const targetRow = rowIndex || id;
+    const payload = data || rest;
+    await updateDivisi(targetRow, payload);
     return NextResponse.json({ success: true, message: 'Data divisi berhasil diperbarui!' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
