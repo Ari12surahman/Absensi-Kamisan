@@ -112,6 +112,7 @@ export default function SalAppPage() {
 
   // Login Admin State
   const [adminPass, setAdminPass] = useState('');
+  const [showAdminPass, setShowAdminPass] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
 
   // Modals State
@@ -357,7 +358,7 @@ export default function SalAppPage() {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPass }),
+        body: JSON.stringify({ password: adminPass.trim() }),
       });
       const json = await res.json();
       if (json.success) {
@@ -885,14 +886,28 @@ export default function SalAppPage() {
             </div>
 
             <form onSubmit={handleAdminLogin} className="space-y-4">
-              <input
-                type="password"
-                value={adminPass}
-                onChange={e => setAdminPass(e.target.value)}
-                placeholder="Masukkan Password (default: admin123)"
-                required
-                className="w-full pl-4 pr-4 py-3 bg-surface-container-low rounded-2xl text-xs font-semibold text-on-surface outline-none border border-surface-container-high focus:border-primary transition"
-              />
+              <div className="relative">
+                <input
+                  type={showAdminPass ? "text" : "password"}
+                  value={adminPass}
+                  onChange={e => setAdminPass(e.target.value)}
+                  placeholder="Masukkan Password"
+                  required
+                  className="w-full pl-4 pr-11 py-3 bg-surface-container-low rounded-2xl text-xs font-semibold text-on-surface outline-none border border-surface-container-high focus:border-primary transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPass(!showAdminPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1 transition"
+                  title={showAdminPass ? "Sembunyikan password" : "Lihat password"}
+                >
+                  {showAdminPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-surface-container-low border border-surface-container-high text-[11px] text-on-surface-variant text-center">
+                Sandi bawaan: <code className="font-mono text-primary font-bold">admin123</code> atau <code className="font-mono text-primary font-bold">admin</code>
+              </div>
 
               <button
                 type="submit"
@@ -1931,4 +1946,3 @@ export default function SalAppPage() {
     </div>
   );
 }
-
