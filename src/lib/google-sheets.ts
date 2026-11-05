@@ -89,11 +89,18 @@ async function fetchCsvSheet(sheetName: string): Promise<any[][] | null> {
 // ==========================================
 // DIVISI
 // ==========================================
+const deletedDivisiKeys = new Set<string>();
+
 export async function fetchDivisi(): Promise<DivisiItem[]> {
+  const isDeleted = (d: DivisiItem) =>
+    deletedDivisiKeys.has(String(d.id)) ||
+    deletedDivisiKeys.has(String(d.rowIndex)) ||
+    deletedDivisiKeys.has((d.namaDivisi || '').trim().toLowerCase());
+
   // 1. Try Google Apps Script API Bridge
   const gasData = await callGasApi<DivisiItem[]>('getDivisi');
   if (gasData && Array.isArray(gasData) && gasData.length > 0) {
-    return gasData;
+    return gasData.filter(d => !isDeleted(d));
   }
 
   // 2. Try Public Google Sheets CSV export
@@ -105,7 +112,9 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
       namaDivisi: String(row[1] || '').trim(),
       keterangan: String(row[2] || '-'),
       status: String(row[3] || 'Aktif'),
-    })).filter(d => d.namaDivisi !== '');
+    }))
+    .filter(d => d.namaDivisi !== '')
+    .filter(d => !isDeleted(d));
     if (list.length > 0) return list;
   }
 
@@ -127,7 +136,8 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
             keterangan: row[2] || '-',
             status: row[3] || 'Aktif',
           }))
-          .filter(d => d.namaDivisi.trim() !== '');
+          .filter(d => d.namaDivisi.trim() !== '')
+          .filter(d => !isDeleted(d));
       }
     } catch (e) {
       console.warn('Sheets API Divisi error:', e);
@@ -135,7 +145,7 @@ export async function fetchDivisi(): Promise<DivisiItem[]> {
   }
 
   // 4. Fallback to mockDb
-  return mockDb.getDivisi();
+  return mockDb.getDivisi().filter(d => !isDeleted(d));
 }
 
 export async function insertDivisi(data: Partial<DivisiItem>) {
@@ -169,10 +179,14 @@ export async function updateDivisi(rowIndex: number | string, data: Partial<Divi
   return mockDb.updateDivisi(String(rowIndex), data);
 }
 
-export async function deleteDivisi(rowIndex: number | string) {
-  const gasRes = await callGasApi<any>('deleteDivisi', { rowIndex }, 'POST');
+export async function deleteDivisi(rowIndex: number | string, id?: string, nama?: string) {
+  if (rowIndex) deletedDivisiKeys.add(String(rowIndex));
+  if (id) deletedDivisiKeys.add(String(id));
+  if (nama) deletedDivisiKeys.add(nama.trim().toLowerCase());
+
+  const gasRes = await callGasApi<any>('deleteDivisi', { rowIndex, id, nama }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
-  return mockDb.deleteDivisi(String(rowIndex));
+  return mockDb.deleteDivisi(String(rowIndex), nama);
 }
 
 // ==========================================

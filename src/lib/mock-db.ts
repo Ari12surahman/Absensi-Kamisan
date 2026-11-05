@@ -93,9 +93,12 @@ export const mockDb = {
     );
     return true;
   },
-  deleteDivisi: (idOrRow: string | number) => {
+  deleteDivisi: (idOrRow: string | number, nama?: string) => {
     mockDivisi = mockDivisi.filter(
-      d => String(d.id) !== String(idOrRow) && String(d.rowIndex) !== String(idOrRow)
+      d =>
+        String(d.id) !== String(idOrRow) &&
+        String(d.rowIndex) !== String(idOrRow) &&
+        (!nama || d.namaDivisi.toLowerCase() !== nama.toLowerCase())
     );
     return true;
   },

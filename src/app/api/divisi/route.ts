@@ -36,8 +36,9 @@ export async function DELETE(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     const rowIndex = searchParams.get('rowIndex');
-    if (!id && !rowIndex) return NextResponse.json({ success: false, message: 'ID diperlukan' }, { status: 400 });
-    await deleteDivisi(rowIndex || id!);
+    const nama = searchParams.get('nama');
+    if (!id && !rowIndex && !nama) return NextResponse.json({ success: false, message: 'ID atau nama diperlukan' }, { status: 400 });
+    await deleteDivisi(rowIndex || id || nama!, id || undefined, nama || undefined);
     return NextResponse.json({ success: true, message: 'Divisi berhasil dihapus!' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

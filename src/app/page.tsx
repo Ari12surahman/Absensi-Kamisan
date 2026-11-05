@@ -247,12 +247,42 @@ export default function SalAppPage() {
     }
   };
 
+  // Helper to persist locally deleted divisi so they never reappear
+  const getDeletedDivisi = (): string[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(localStorage.getItem('salapp_deleted_divisi') || '[]');
+    } catch {
+      return [];
+    }
+  };
+
+  const addDeletedDivisi = (key: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const list = getDeletedDivisi();
+      if (!list.includes(key)) {
+        list.push(key);
+        localStorage.setItem('salapp_deleted_divisi', JSON.stringify(list));
+      }
+    } catch {}
+  };
+
   const fetchDivisiData = async () => {
     setLoadingDivisi(true);
     try {
       const res = await fetch('/api/divisi');
       const json = await res.json();
-      if (json.success) setDivisiList(json.data || []);
+      if (json.success) {
+        const deletedKeys = getDeletedDivisi();
+        const cleanData = (json.data || []).filter(
+          (d: DivisiItem) =>
+            !deletedKeys.includes(String(d.id)) &&
+            !deletedKeys.includes(String(d.rowIndex)) &&
+            !deletedKeys.includes((d.namaDivisi || '').trim().toLowerCase())
+        );
+        setDivisiList(cleanData);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -1799,28 +1829,48 @@ export default function SalAppPage() {
                         key={item.id || idx}
                         className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
                       >
+                        {/* Card Header: Division Icon + Name + Reporter & Period */}
                         <div className="flex items-start justify-between gap-2.5">
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                               <FileText size={18} />
                             </div>
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <h3 className="text-sm font-bold text-primary truncate leading-tight">{item.divisi}</h3>
                               <p className="text-[11px] text-on-surface font-semibold mt-0.5 truncate">
-                                {item.namaPelapor} &bull; <span className="text-on-surface-variant font-normal">{item.periode}</span>
+                                PJ: {item.namaPelapor}
                               </p>
                             </div>
                           </div>
-                          <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-mono font-semibold text-primary text-[10px] shrink-0">
-                            {item.laporanDana || 'Rp 0'}
+                          <span className="px-2.5 py-1 rounded-full bg-surface-container-low text-primary text-[10px] font-bold shrink-0 border border-surface-container-high/60">
+                            {item.periode || 'Pekan Ini'}
                           </span>
                         </div>
 
+                        {/* Capaian & Program Kerja */}
                         {item.hasilUsaha && (
-                          <div className="bg-surface-container-low/50 p-3 rounded-2xl border border-surface-container-high/40">
-                            <p className="text-xs text-on-surface line-clamp-2 leading-relaxed">
+                          <div className="bg-surface-container-low/40 p-3 rounded-2xl border border-surface-container-high/40 flex flex-col gap-1">
+                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">
+                              Capaian &amp; Proker
+                            </span>
+                            <p className="text-xs text-on-surface leading-relaxed break-words">
                               {item.hasilUsaha}
                             </p>
+                          </div>
+                        )}
+
+                        {/* Anggaran & Kas (Dedicated full-width block, never overlaps or 'tembus-tembus') */}
+                        {item.laporanDana && item.laporanDana !== '-' && (
+                          <div className="bg-surface-container-low/80 p-3 rounded-2xl border border-surface-container-high/60 flex items-start gap-2.5">
+                            <DollarSign size={16} className="text-primary shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
+                                Anggaran &amp; Realisasi Kas
+                              </span>
+                              <p className="font-mono text-xs font-semibold text-primary break-words mt-0.5 leading-relaxed">
+                                {item.laporanDana}
+                              </p>
+                            </div>
                           </div>
                         )}
 
@@ -1845,6 +1895,7 @@ export default function SalAppPage() {
                             type="button"
                             onClick={async () => {
                               if (confirm('Yakin ingin menghapus laporan ini?')) {
+                                setLaporanList(prev => prev.filter(l => (item.id ? l.id !== item.id : true) && (item.rowIndex ? l.rowIndex !== item.rowIndex : true)));
                                 await fetch(`/api/laporan?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
                                 showToast('Laporan berhasil dihapus!');
                                 fetchLaporanData();
@@ -1886,8 +1937,8 @@ export default function SalAppPage() {
                           <td className="p-4 min-w-[200px]">
                             <p className="text-xs text-on-surface line-clamp-2 leading-relaxed">{item.hasilUsaha}</p>
                           </td>
-                          <td className="p-4 text-xs font-mono text-on-surface-variant whitespace-nowrap">
-                            <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-semibold text-primary">
+                          <td className="p-4 text-xs font-mono text-on-surface-variant max-w-[220px]">
+                            <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-semibold text-primary block truncate" title={item.laporanDana}>
                               {item.laporanDana}
                             </span>
                           </td>
@@ -2018,7 +2069,11 @@ export default function SalAppPage() {
                             type="button"
                             onClick={async () => {
                               if (confirm('Yakin ingin menghapus divisi ini?')) {
-                                await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+                                if (item.id) addDeletedDivisi(String(item.id));
+                                if (item.rowIndex) addDeletedDivisi(String(item.rowIndex));
+                                if (item.namaDivisi) addDeletedDivisi(item.namaDivisi.trim().toLowerCase());
+                                setDivisiList(prev => prev.filter(d => (item.id ? d.id !== item.id : true) && d.namaDivisi !== item.namaDivisi));
+                                await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.namaDivisi)}`, { method: 'DELETE' });
                                 showToast('Divisi berhasil dihapus!');
                                 fetchDivisiData();
                               }
@@ -2076,7 +2131,11 @@ export default function SalAppPage() {
                               type="button"
                               onClick={async () => {
                                 if (confirm('Yakin ingin menghapus divisi ini?')) {
-                                  await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
+                                  if (item.id) addDeletedDivisi(String(item.id));
+                                  if (item.rowIndex) addDeletedDivisi(String(item.rowIndex));
+                                  if (item.namaDivisi) addDeletedDivisi(item.namaDivisi.trim().toLowerCase());
+                                  setDivisiList(prev => prev.filter(d => (item.id ? d.id !== item.id : true) && d.namaDivisi !== item.namaDivisi));
+                                  await fetch(`/api/divisi?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.namaDivisi)}`, { method: 'DELETE' });
                                   showToast('Divisi berhasil dihapus!');
                                   fetchDivisiData();
                                 }
