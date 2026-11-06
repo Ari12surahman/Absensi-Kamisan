@@ -259,16 +259,19 @@ export default function SalAppPage() {
   // Searchable Asatidz Suggestions for Attendance Form
   const filteredAsatidzSuggestions = useMemo(() => {
     const q = formAbsenNama.trim().toLowerCase();
+    const list = asatidzList || [];
     if (!q) {
-      return asatidzList.slice(0, 8);
+      return list.filter(a => a?.nama).slice(0, 8);
     }
-    return asatidzList
-      .filter(a => a.nama.toLowerCase().includes(q) || (a.jabatan && a.jabatan.toLowerCase().includes(q)))
+    return list
+      .filter(a => (a?.nama && a.nama.toLowerCase().includes(q)) || (a?.jabatan && a.jabatan.toLowerCase().includes(q)))
       .slice(0, 10);
   }, [formAbsenNama, asatidzList]);
 
   const isRegisteredAsatidz = useMemo(() => {
-    return asatidzList.some(a => a.nama.trim().toLowerCase() === formAbsenNama.trim().toLowerCase());
+    if (!formAbsenNama.trim()) return false;
+    const target = formAbsenNama.trim().toLowerCase();
+    return (asatidzList || []).some(a => a?.nama && a.nama.trim().toLowerCase() === target);
   }, [formAbsenNama, asatidzList]);
 
   // Selected Acara Object
@@ -1179,18 +1182,20 @@ export default function SalAppPage() {
   }, [laporanList, filterDivisiAdmin, searchLaporanAdmin]);
 
   const filteredAsatidz = useMemo(() => {
-    let list = asatidzList;
+    let list = asatidzList || [];
     if (searchAsatidzAdmin.trim()) {
       const q = searchAsatidzAdmin.toLowerCase();
       list = list.filter(
         a =>
-          a.nama.toLowerCase().includes(q) ||
-          (a.jabatan && a.jabatan.toLowerCase().includes(q)) ||
-          (a.status && a.status.toLowerCase().includes(q))
+          (a?.nama && a.nama.toLowerCase().includes(q)) ||
+          (a?.jabatan && a.jabatan.toLowerCase().includes(q)) ||
+          (a?.status && a.status.toLowerCase().includes(q))
       );
     }
     return list;
   }, [asatidzList, searchAsatidzAdmin]);
+
+  const totalPagesAsatidz = Math.ceil((filteredAsatidz?.length || 0) / PAGE_SIZE) || 1;
 
   // Paginated Items
   const paginatedAbsensi = useMemo(() => {
@@ -2675,6 +2680,33 @@ export default function SalAppPage() {
                           </div>
                         </div>
                       ))
+                    )}
+
+                    {/* Mobile Pagination */}
+                    {totalPagesAsatidz > 1 && (
+                      <div className="flex justify-between items-center bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                        <span>
+                          Hal {pageAsatidz} dari {totalPagesAsatidz}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pageAsatidz === 1}
+                            onClick={() => setPageAsatidz(prev => Math.max(1, prev - 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pageAsatidz === totalPagesAsatidz}
+                            onClick={() => setPageAsatidz(prev => Math.min(totalPagesAsatidz, prev + 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
 
