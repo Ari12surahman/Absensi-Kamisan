@@ -40,6 +40,23 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    let bodyItems: any[] = [];
+    try {
+      const body = await req.json();
+      if (body && Array.isArray(body.items)) {
+        bodyItems = body.items;
+      } else if (body && Array.isArray(body.ids)) {
+        bodyItems = body.ids.map((idVal: any) => ({ id: idVal }));
+      }
+    } catch (_) {}
+
+    if (bodyItems.length > 0) {
+      for (const it of bodyItems) {
+        await deleteAsatidz(it.rowIndex || it.id || it.nama, it.id, it.nama);
+      }
+      return NextResponse.json({ success: true, message: `${bodyItems.length} data asatidz berhasil dihapus!` });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     const rowIndex = searchParams.get('rowIndex');

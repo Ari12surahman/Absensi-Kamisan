@@ -35,6 +35,7 @@ import {
   DollarSign,
   TrendingUp,
   Check,
+  CheckSquare,
   X
 } from 'lucide-react';
 import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem, AsatidzItem } from '@/types';
@@ -91,6 +92,25 @@ export default function SalAppPage() {
   const [searchAsatidzAdmin, setSearchAsatidzAdmin] = useState('');
   const [filterDivisiAdmin, setFilterDivisiAdmin] = useState('');
   const [searchLaporanAdmin, setSearchLaporanAdmin] = useState('');
+
+  // Bulk Delete Selection States
+  const [selectedAbsensiKeys, setSelectedAbsensiKeys] = useState<string[]>([]);
+  const [selectedAsatidzKeys, setSelectedAsatidzKeys] = useState<string[]>([]);
+  const [selectedAcaraKeys, setSelectedAcaraKeys] = useState<string[]>([]);
+  const [selectedLaporanKeys, setSelectedLaporanKeys] = useState<string[]>([]);
+
+  // Clear selections on tab switch
+  useEffect(() => {
+    setSelectedAbsensiKeys([]);
+    setSelectedAsatidzKeys([]);
+    setSelectedAcaraKeys([]);
+    setSelectedLaporanKeys([]);
+  }, [adminTab]);
+
+  const getAbsensiKey = (item: AbsensiRecord) => String(item.id || item.rowIndex || `${item.nama}_${item.waktu}`);
+  const getAsatidzKey = (item: AsatidzItem) => String(item.id || item.rowIndex || item.nama);
+  const getAcaraKey = (item: AcaraItem) => String(item.id || item.rowIndex || item.namaAcara);
+  const getLaporanKey = (item: LaporanItem) => String(item.id || item.rowIndex || `${item.namaPelapor}_${item.waktu}`);
 
   // Form Presensi State
   const [formAbsenAcara, setFormAbsenAcara] = useState('');
@@ -748,6 +768,50 @@ export default function SalAppPage() {
     });
   };
 
+  const handleBulkDeleteAbsensi = () => {
+    if (selectedAbsensiKeys.length === 0) return;
+    const count = selectedAbsensiKeys.length;
+    requestConfirm({
+      title: 'Hapus Massal Presensi',
+      message: `Apakah Anda yakin ingin menghapus ${count} catatan presensi yang dipilih? Tindakan ini akan menghapus data terpilih dan tidak dapat dibatalkan.`,
+      confirmLabel: `Ya, Hapus ${count} Presensi`,
+      isDanger: true,
+      onConfirm: async () => {
+        const itemsToDelete = absensiList.filter(item => selectedAbsensiKeys.includes(getAbsensiKey(item)));
+
+        for (const item of itemsToDelete) {
+          const k = getAbsensiKey(item);
+          addStoredKey('salapp_deleted_absensi', k);
+          if (item.id) addStoredKey('salapp_deleted_absensi', String(item.id));
+          if (item.rowIndex) addStoredKey('salapp_deleted_absensi', String(item.rowIndex));
+        }
+
+        const customList = getStoredList<AbsensiRecord>('salapp_custom_absensi').filter(
+          r => !selectedAbsensiKeys.includes(getAbsensiKey(r))
+        );
+        saveStoredList('salapp_custom_absensi', customList);
+
+        setAbsensiList(prev => prev.filter(r => !selectedAbsensiKeys.includes(getAbsensiKey(r))));
+        setSelectedAbsensiKeys([]);
+        showToast(`Menghapus ${count} data presensi...`);
+
+        try {
+          await fetch('/api/absensi', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: itemsToDelete.map(it => ({ id: it.id, rowIndex: it.rowIndex })),
+            }),
+          });
+          showToast(`${count} data presensi berhasil dihapus!`);
+        } catch (e) {
+          console.error(e);
+        }
+        fetchAbsensiData();
+      },
+    });
+  };
+
   const handleDeleteAcara = (item: AcaraItem) => {
     requestConfirm({
       title: 'Hapus Agenda Acara',
@@ -780,6 +844,50 @@ export default function SalAppPage() {
 
         await fetch(`/api/acara?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.namaAcara)}`, { method: 'DELETE' });
         showToast('Acara berhasil dihapus!');
+        fetchAcaraData();
+      },
+    });
+  };
+
+  const handleBulkDeleteAcara = () => {
+    if (selectedAcaraKeys.length === 0) return;
+    const count = selectedAcaraKeys.length;
+    requestConfirm({
+      title: 'Hapus Massal Agenda Acara',
+      message: `Apakah Anda yakin ingin menghapus ${count} agenda acara yang dipilih?`,
+      confirmLabel: `Ya, Hapus ${count} Acara`,
+      isDanger: true,
+      onConfirm: async () => {
+        const itemsToDelete = acaraList.filter(item => selectedAcaraKeys.includes(getAcaraKey(item)));
+
+        for (const item of itemsToDelete) {
+          const k = getAcaraKey(item);
+          addStoredKey('salapp_deleted_acara', k);
+          if (item.id) addStoredKey('salapp_deleted_acara', String(item.id));
+          if (item.rowIndex) addStoredKey('salapp_deleted_acara', String(item.rowIndex));
+        }
+
+        const customList = getStoredList<AcaraItem>('salapp_custom_acara').filter(
+          a => !selectedAcaraKeys.includes(getAcaraKey(a))
+        );
+        saveStoredList('salapp_custom_acara', customList);
+
+        setAcaraList(prev => prev.filter(a => !selectedAcaraKeys.includes(getAcaraKey(a))));
+        setSelectedAcaraKeys([]);
+        showToast(`Menghapus ${count} acara...`);
+
+        try {
+          await fetch('/api/acara', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: itemsToDelete.map(it => ({ id: it.id, rowIndex: it.rowIndex, nama: it.namaAcara })),
+            }),
+          });
+          showToast(`${count} acara berhasil dihapus!`);
+        } catch (e) {
+          console.error(e);
+        }
         fetchAcaraData();
       },
     });
@@ -837,6 +945,50 @@ export default function SalAppPage() {
 
         await fetch(`/api/laporan?id=${item.id}&rowIndex=${item.rowIndex || ''}`, { method: 'DELETE' });
         showToast('Laporan berhasil dihapus!');
+        fetchLaporanData();
+      },
+    });
+  };
+
+  const handleBulkDeleteLaporan = () => {
+    if (selectedLaporanKeys.length === 0) return;
+    const count = selectedLaporanKeys.length;
+    requestConfirm({
+      title: 'Hapus Massal Laporan Divisi',
+      message: `Apakah Anda yakin ingin menghapus ${count} laporan divisi yang dipilih?`,
+      confirmLabel: `Ya, Hapus ${count} Laporan`,
+      isDanger: true,
+      onConfirm: async () => {
+        const itemsToDelete = laporanList.filter(item => selectedLaporanKeys.includes(getLaporanKey(item)));
+
+        for (const item of itemsToDelete) {
+          const k = getLaporanKey(item);
+          addStoredKey('salapp_deleted_laporan', k);
+          if (item.id) addStoredKey('salapp_deleted_laporan', String(item.id));
+          if (item.rowIndex) addStoredKey('salapp_deleted_laporan', String(item.rowIndex));
+        }
+
+        const customList = getStoredList<LaporanItem>('salapp_custom_laporan').filter(
+          l => !selectedLaporanKeys.includes(getLaporanKey(l))
+        );
+        saveStoredList('salapp_custom_laporan', customList);
+
+        setLaporanList(prev => prev.filter(l => !selectedLaporanKeys.includes(getLaporanKey(l))));
+        setSelectedLaporanKeys([]);
+        showToast(`Menghapus ${count} laporan...`);
+
+        try {
+          await fetch('/api/laporan', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: itemsToDelete.map(it => ({ id: it.id, rowIndex: it.rowIndex })),
+            }),
+          });
+          showToast(`${count} laporan berhasil dihapus!`);
+        } catch (e) {
+          console.error(e);
+        }
         fetchLaporanData();
       },
     });
@@ -914,6 +1066,51 @@ export default function SalAppPage() {
 
         await fetch(`/api/asatidz?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.nama)}`, { method: 'DELETE' });
         showToast('Data asatidz berhasil dihapus!');
+        fetchAsatidzData();
+      },
+    });
+  };
+
+  const handleBulkDeleteAsatidz = () => {
+    if (selectedAsatidzKeys.length === 0) return;
+    const count = selectedAsatidzKeys.length;
+    requestConfirm({
+      title: 'Hapus Massal Data Asatidz',
+      message: `Apakah Anda yakin ingin menghapus ${count} data asatidz yang dipilih dari daftar master?`,
+      confirmLabel: `Ya, Hapus ${count} Asatidz`,
+      isDanger: true,
+      onConfirm: async () => {
+        const itemsToDelete = asatidzList.filter(item => selectedAsatidzKeys.includes(getAsatidzKey(item)));
+
+        for (const item of itemsToDelete) {
+          const k = getAsatidzKey(item);
+          addStoredKey('salapp_deleted_asatidz', k);
+          if (item.id) addStoredKey('salapp_deleted_asatidz', String(item.id));
+          if (item.rowIndex) addStoredKey('salapp_deleted_asatidz', String(item.rowIndex));
+          if (item.nama) addStoredKey('salapp_deleted_asatidz', item.nama.trim().toLowerCase());
+        }
+
+        const customList = getStoredList<AsatidzItem>('salapp_custom_asatidz').filter(
+          a => !selectedAsatidzKeys.includes(getAsatidzKey(a))
+        );
+        saveStoredList('salapp_custom_asatidz', customList);
+
+        setAsatidzList(prev => prev.filter(a => !selectedAsatidzKeys.includes(getAsatidzKey(a))));
+        setSelectedAsatidzKeys([]);
+        showToast(`Menghapus ${count} data asatidz...`);
+
+        try {
+          await fetch('/api/asatidz', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: itemsToDelete.map(it => ({ id: it.id, rowIndex: it.rowIndex, nama: it.nama })),
+            }),
+          });
+          showToast(`${count} data asatidz berhasil dihapus!`);
+        } catch (e) {
+          console.error(e);
+        }
         fetchAsatidzData();
       },
     });
@@ -2185,6 +2382,33 @@ export default function SalAppPage() {
 
                   {/* MOBILE VIEW: Clean Vertical Cards (block md:hidden) - Zero Horizontal Scroll */}
                   <div className="space-y-3 block md:hidden">
+                    {/* Mobile Bulk Selection Bar */}
+                    {paginatedAbsensi.length > 0 && (
+                      <div className="flex items-center justify-between bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={paginatedAbsensi.length > 0 && paginatedAbsensi.every(item => selectedAbsensiKeys.includes(getAbsensiKey(item)))}
+                            onChange={() => {
+                              const allSelected = paginatedAbsensi.length > 0 && paginatedAbsensi.every(item => selectedAbsensiKeys.includes(getAbsensiKey(item)));
+                              if (allSelected) {
+                                const pageKeys = new Set(paginatedAbsensi.map(getAbsensiKey));
+                                setSelectedAbsensiKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                              } else {
+                                const pageKeys = paginatedAbsensi.map(getAbsensiKey);
+                                setSelectedAbsensiKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                              }
+                            }}
+                            className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                          />
+                          <span>Pilih Semua di Halaman Ini</span>
+                        </label>
+                        {selectedAbsensiKeys.length > 0 && (
+                          <span className="text-[11px] text-primary font-bold">{selectedAbsensiKeys.length} dipilih</span>
+                        )}
+                      </div>
+                    )}
+
                     {paginatedAbsensi.length === 0 ? (
                       <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
                         {loadingAbsensi ? 'Memuat data presensi...' : 'Tidak ada data presensi yang sesuai.'}
@@ -2202,11 +2426,25 @@ export default function SalAppPage() {
                         return (
                           <div
                             key={item.id || idx}
-                            className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                            className={`bg-surface-container-lowest rounded-3xl p-4 shadow-xs border flex flex-col gap-3 transition ${
+                              selectedAbsensiKeys.includes(getAbsensiKey(item))
+                                ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
+                                : 'border-surface-container-high'
+                            }`}
                           >
-                            {/* Card Header: Initials + Name + ID + Status Badge */}
+                            {/* Card Header: Checkbox + Initials + Name + ID + Status Badge */}
                             <div className="flex items-start justify-between gap-2.5">
-                              <div className="flex items-center gap-3 min-w-0">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Pilih ${item.nama}`}
+                                  checked={selectedAbsensiKeys.includes(getAbsensiKey(item))}
+                                  onChange={() => {
+                                    const k = getAbsensiKey(item);
+                                    setSelectedAbsensiKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                  }}
+                                  className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer shrink-0 mt-0.5"
+                                />
                                 <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                                   {initials}
                                 </div>
@@ -2279,6 +2517,24 @@ export default function SalAppPage() {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                          <th className="p-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label="Pilih semua di halaman ini"
+                              checked={paginatedAbsensi.length > 0 && paginatedAbsensi.every(item => selectedAbsensiKeys.includes(getAbsensiKey(item)))}
+                              onChange={() => {
+                                const allSelected = paginatedAbsensi.length > 0 && paginatedAbsensi.every(item => selectedAbsensiKeys.includes(getAbsensiKey(item)));
+                                if (allSelected) {
+                                  const pageKeys = new Set(paginatedAbsensi.map(getAbsensiKey));
+                                  setSelectedAbsensiKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                                } else {
+                                  const pageKeys = paginatedAbsensi.map(getAbsensiKey);
+                                  setSelectedAbsensiKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                            />
+                          </th>
                           <th className="p-4 w-12 text-center">NO</th>
                           <th className="p-4 whitespace-nowrap">WAKTU</th>
                           <th className="p-4 whitespace-nowrap">NAMA ASATIDZ</th>
@@ -2291,7 +2547,7 @@ export default function SalAppPage() {
                       <tbody className="text-xs divide-y divide-surface-container-high">
                         {paginatedAbsensi.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="text-center p-8 text-on-surface-variant font-medium">
+                            <td colSpan={8} className="text-center p-8 text-on-surface-variant font-medium">
                               {loadingAbsensi ? 'Memuat data presensi...' : 'Tidak ada data presensi yang sesuai.'}
                             </td>
                           </tr>
@@ -2306,7 +2562,24 @@ export default function SalAppPage() {
                               .toUpperCase();
 
                             return (
-                              <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
+                              <tr
+                                key={item.id || idx}
+                                className={`hover:bg-surface-container-low transition-colors ${
+                                  selectedAbsensiKeys.includes(getAbsensiKey(item)) ? 'bg-primary/5' : ''
+                                }`}
+                              >
+                                <td className="p-4 text-center">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Pilih ${item.nama}`}
+                                    checked={selectedAbsensiKeys.includes(getAbsensiKey(item))}
+                                    onChange={() => {
+                                      const k = getAbsensiKey(item);
+                                      setSelectedAbsensiKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                    }}
+                                    className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                                  />
+                                </td>
                                 <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(actualIdx)}</td>
                                 <td className="p-4 whitespace-nowrap font-mono text-[11px]">{item.waktu || '-'}</td>
                                 <td className="p-4 whitespace-nowrap">
@@ -2429,6 +2702,33 @@ export default function SalAppPage() {
 
                   {/* MOBILE VIEW: Cards for Acara (block md:hidden) */}
                   <div className="space-y-3 block md:hidden">
+                    {/* Mobile Bulk Selection Bar */}
+                    {paginatedAcara.length > 0 && (
+                      <div className="flex items-center justify-between bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={paginatedAcara.length > 0 && paginatedAcara.every(item => selectedAcaraKeys.includes(getAcaraKey(item)))}
+                            onChange={() => {
+                              const allSelected = paginatedAcara.length > 0 && paginatedAcara.every(item => selectedAcaraKeys.includes(getAcaraKey(item)));
+                              if (allSelected) {
+                                const pageKeys = new Set(paginatedAcara.map(getAcaraKey));
+                                setSelectedAcaraKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                              } else {
+                                const pageKeys = paginatedAcara.map(getAcaraKey);
+                                setSelectedAcaraKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                              }
+                            }}
+                            className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                          />
+                          <span>Pilih Semua di Halaman Ini</span>
+                        </label>
+                        {selectedAcaraKeys.length > 0 && (
+                          <span className="text-[11px] text-primary font-bold">{selectedAcaraKeys.length} dipilih</span>
+                        )}
+                      </div>
+                    )}
+
                     {paginatedAcara.length === 0 ? (
                       <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
                         {loadingAcara ? 'Memuat data acara...' : 'Tidak ada agenda acara terdaftar.'}
@@ -2437,10 +2737,24 @@ export default function SalAppPage() {
                       paginatedAcara.map((item, idx) => (
                         <div
                           key={item.id || idx}
-                          className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                          className={`bg-surface-container-lowest rounded-3xl p-4 shadow-xs border flex flex-col gap-3 transition ${
+                            selectedAcaraKeys.includes(getAcaraKey(item))
+                              ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
+                              : 'border-surface-container-high'
+                          }`}
                         >
                           <div className="flex items-start justify-between gap-2.5">
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <input
+                                type="checkbox"
+                                aria-label={`Pilih ${item.namaAcara}`}
+                                checked={selectedAcaraKeys.includes(getAcaraKey(item))}
+                                onChange={() => {
+                                  const k = getAcaraKey(item);
+                                  setSelectedAcaraKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                }}
+                                className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer shrink-0 mt-0.5"
+                              />
                               <div className="w-10 h-10 rounded-2xl bg-surface-container-low text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                                 <Calendar size={18} />
                               </div>
@@ -2501,6 +2815,24 @@ export default function SalAppPage() {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                          <th className="p-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label="Pilih semua acara di halaman ini"
+                              checked={paginatedAcara.length > 0 && paginatedAcara.every(item => selectedAcaraKeys.includes(getAcaraKey(item)))}
+                              onChange={() => {
+                                const allSelected = paginatedAcara.length > 0 && paginatedAcara.every(item => selectedAcaraKeys.includes(getAcaraKey(item)));
+                                if (allSelected) {
+                                  const pageKeys = new Set(paginatedAcara.map(getAcaraKey));
+                                  setSelectedAcaraKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                                } else {
+                                  const pageKeys = paginatedAcara.map(getAcaraKey);
+                                  setSelectedAcaraKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                            />
+                          </th>
                           <th className="p-4 w-12 text-center">NO</th>
                           <th className="p-4 whitespace-nowrap">NAMA AGENDA</th>
                           <th className="p-4 whitespace-nowrap">TANGGAL</th>
@@ -2511,7 +2843,24 @@ export default function SalAppPage() {
                       </thead>
                       <tbody className="text-xs divide-y divide-surface-container-high">
                         {paginatedAcara.map((item, idx) => (
-                          <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
+                          <tr
+                            key={item.id || idx}
+                            className={`hover:bg-surface-container-low transition-colors ${
+                              selectedAcaraKeys.includes(getAcaraKey(item)) ? 'bg-primary/5' : ''
+                            }`}
+                          >
+                            <td className="p-4 text-center">
+                              <input
+                                type="checkbox"
+                                aria-label={`Pilih ${item.namaAcara}`}
+                                checked={selectedAcaraKeys.includes(getAcaraKey(item))}
+                                onChange={() => {
+                                  const k = getAcaraKey(item);
+                                  setSelectedAcaraKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                }}
+                                className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                              />
+                            </td>
                             <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
                             <td className="p-4 font-bold text-on-surface text-xs sm:text-sm whitespace-nowrap">{item.namaAcara}</td>
                             <td className="p-4 text-xs font-medium text-on-surface-variant whitespace-nowrap">{item.tanggalAcara}</td>
@@ -2627,6 +2976,33 @@ export default function SalAppPage() {
 
                   {/* MOBILE VIEW: Cards for Asatidz (block md:hidden) */}
                   <div className="space-y-3 block md:hidden">
+                    {/* Mobile Bulk Selection Bar */}
+                    {paginatedAsatidz.length > 0 && (
+                      <div className="flex items-center justify-between bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={paginatedAsatidz.length > 0 && paginatedAsatidz.every(item => selectedAsatidzKeys.includes(getAsatidzKey(item)))}
+                            onChange={() => {
+                              const allSelected = paginatedAsatidz.length > 0 && paginatedAsatidz.every(item => selectedAsatidzKeys.includes(getAsatidzKey(item)));
+                              if (allSelected) {
+                                const pageKeys = new Set(paginatedAsatidz.map(getAsatidzKey));
+                                setSelectedAsatidzKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                              } else {
+                                const pageKeys = paginatedAsatidz.map(getAsatidzKey);
+                                setSelectedAsatidzKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                              }
+                            }}
+                            className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                          />
+                          <span>Pilih Semua di Halaman Ini</span>
+                        </label>
+                        {selectedAsatidzKeys.length > 0 && (
+                          <span className="text-[11px] text-primary font-bold">{selectedAsatidzKeys.length} dipilih</span>
+                        )}
+                      </div>
+                    )}
+
                     {paginatedAsatidz.length === 0 ? (
                       <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
                         {loadingAsatidz ? 'Memuat data asatidz...' : 'Tidak ada data asatidz yang sesuai.'}
@@ -2635,10 +3011,24 @@ export default function SalAppPage() {
                       paginatedAsatidz.map((item, idx) => (
                         <div
                           key={item.id || idx}
-                          className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                          className={`bg-surface-container-lowest rounded-3xl p-4 shadow-xs border flex flex-col gap-3 transition ${
+                            selectedAsatidzKeys.includes(getAsatidzKey(item))
+                              ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
+                              : 'border-surface-container-high'
+                          }`}
                         >
                           <div className="flex items-start justify-between gap-2.5">
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <input
+                                type="checkbox"
+                                aria-label={`Pilih ${item.nama}`}
+                                checked={selectedAsatidzKeys.includes(getAsatidzKey(item))}
+                                onChange={() => {
+                                  const k = getAsatidzKey(item);
+                                  setSelectedAsatidzKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                }}
+                                className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer shrink-0 mt-0.5"
+                              />
                               <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                                 {getInitials(item.nama)}
                               </div>
@@ -2715,6 +3105,24 @@ export default function SalAppPage() {
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-surface-container-low/70 border-b border-surface-container-high text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                          <th className="py-3.5 px-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label="Pilih semua asatidz di halaman ini"
+                              checked={paginatedAsatidz.length > 0 && paginatedAsatidz.every(item => selectedAsatidzKeys.includes(getAsatidzKey(item)))}
+                              onChange={() => {
+                                const allSelected = paginatedAsatidz.length > 0 && paginatedAsatidz.every(item => selectedAsatidzKeys.includes(getAsatidzKey(item)));
+                                if (allSelected) {
+                                  const pageKeys = new Set(paginatedAsatidz.map(getAsatidzKey));
+                                  setSelectedAsatidzKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                                } else {
+                                  const pageKeys = paginatedAsatidz.map(getAsatidzKey);
+                                  setSelectedAsatidzKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                            />
+                          </th>
                           <th className="py-3.5 px-4 w-14 text-center">NO</th>
                           <th className="py-3.5 px-4">NAMA LENGKAP ASATIDZ</th>
                           <th className="py-3.5 px-4">JABATAN / PERAN</th>
@@ -2725,13 +3133,30 @@ export default function SalAppPage() {
                       <tbody className="divide-y divide-surface-container-high/60 font-medium">
                         {paginatedAsatidz.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="py-8 text-center text-on-surface-variant">
+                            <td colSpan={6} className="py-8 text-center text-on-surface-variant">
                               {loadingAsatidz ? 'Memuat data asatidz...' : 'Tidak ada data asatidz.'}
                             </td>
                           </tr>
                         ) : (
                           paginatedAsatidz.map((item, idx) => (
-                            <tr key={item.id || idx} className="hover:bg-surface-container-low/50 transition">
+                            <tr
+                              key={item.id || idx}
+                              className={`hover:bg-surface-container-low/50 transition ${
+                                selectedAsatidzKeys.includes(getAsatidzKey(item)) ? 'bg-primary/5' : ''
+                              }`}
+                            >
+                              <td className="py-3.5 px-4 text-center">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Pilih ${item.nama}`}
+                                  checked={selectedAsatidzKeys.includes(getAsatidzKey(item))}
+                                  onChange={() => {
+                                    const k = getAsatidzKey(item);
+                                    setSelectedAsatidzKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                  }}
+                                  className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                                />
+                              </td>
                               <td className="py-3.5 px-4 text-center font-mono text-on-surface-variant">
                                 {formatIndex((pageAsatidz - 1) * PAGE_SIZE + idx + 1)}
                               </td>
@@ -2847,6 +3272,33 @@ export default function SalAppPage() {
 
                   {/* MOBILE VIEW: Cards for Laporan (block md:hidden) */}
                   <div className="space-y-3 block md:hidden">
+                    {/* Mobile Bulk Selection Bar */}
+                    {paginatedLaporan.length > 0 && (
+                      <div className="flex items-center justify-between bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)))}
+                            onChange={() => {
+                              const allSelected = paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)));
+                              if (allSelected) {
+                                const pageKeys = new Set(paginatedLaporan.map(getLaporanKey));
+                                setSelectedLaporanKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                              } else {
+                                const pageKeys = paginatedLaporan.map(getLaporanKey);
+                                setSelectedLaporanKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                              }
+                            }}
+                            className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                          />
+                          <span>Pilih Semua di Halaman Ini</span>
+                        </label>
+                        {selectedLaporanKeys.length > 0 && (
+                          <span className="text-[11px] text-primary font-bold">{selectedLaporanKeys.length} dipilih</span>
+                        )}
+                      </div>
+                    )}
+
                     {paginatedLaporan.length === 0 ? (
                       <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
                         {loadingLaporan ? 'Memuat data laporan...' : 'Tidak ada laporan divisi masuk.'}
@@ -2855,11 +3307,25 @@ export default function SalAppPage() {
                       paginatedLaporan.map((item, idx) => (
                         <div
                           key={item.id || idx}
-                          className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                          className={`bg-surface-container-lowest rounded-3xl p-4 shadow-xs border flex flex-col gap-3 transition ${
+                            selectedLaporanKeys.includes(getLaporanKey(item))
+                              ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
+                              : 'border-surface-container-high'
+                          }`}
                         >
-                          {/* Card Header: Division Icon + Name + Reporter & Period */}
+                          {/* Card Header: Checkbox + Division Icon + Name + Reporter & Period */}
                           <div className="flex items-start justify-between gap-2.5">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <input
+                                type="checkbox"
+                                aria-label={`Pilih ${item.divisi}`}
+                                checked={selectedLaporanKeys.includes(getLaporanKey(item))}
+                                onChange={() => {
+                                  const k = getLaporanKey(item);
+                                  setSelectedLaporanKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                }}
+                                className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer shrink-0 mt-0.5"
+                              />
                               <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                                 <FileText size={18} />
                               </div>
@@ -2938,6 +3404,24 @@ export default function SalAppPage() {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                          <th className="p-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label="Pilih semua laporan di halaman ini"
+                              checked={paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)))}
+                              onChange={() => {
+                                const allSelected = paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)));
+                                if (allSelected) {
+                                  const pageKeys = new Set(paginatedLaporan.map(getLaporanKey));
+                                  setSelectedLaporanKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                                } else {
+                                  const pageKeys = paginatedLaporan.map(getLaporanKey);
+                                  setSelectedLaporanKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                            />
+                          </th>
                           <th className="p-4 w-12 text-center">NO</th>
                           <th className="p-4 whitespace-nowrap">DIVISI</th>
                           <th className="p-4 whitespace-nowrap">PELAPOR &amp; PERIODE</th>
@@ -2948,7 +3432,24 @@ export default function SalAppPage() {
                       </thead>
                       <tbody className="text-xs divide-y divide-surface-container-high">
                         {paginatedLaporan.map((item, idx) => (
-                          <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
+                          <tr
+                            key={item.id || idx}
+                            className={`hover:bg-surface-container-low transition-colors ${
+                              selectedLaporanKeys.includes(getLaporanKey(item)) ? 'bg-primary/5' : ''
+                            }`}
+                          >
+                            <td className="p-4 text-center">
+                              <input
+                                type="checkbox"
+                                aria-label={`Pilih ${item.divisi}`}
+                                checked={selectedLaporanKeys.includes(getLaporanKey(item))}
+                                onChange={() => {
+                                  const k = getLaporanKey(item);
+                                  setSelectedLaporanKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                }}
+                                className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                              />
+                            </td>
                             <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
                             <td className="p-4 whitespace-nowrap font-bold text-primary">{item.divisi}</td>
                             <td className="p-4 whitespace-nowrap">
@@ -4185,6 +4686,117 @@ export default function SalAppPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* FLOATING BULK ACTION BAR                            */}
+      {/* ==================================================== */}
+      {((adminTab === 'absensi' && selectedAbsensiKeys.length > 0) ||
+        (adminTab === 'asatidz' && selectedAsatidzKeys.length > 0) ||
+        (adminTab === 'acara' && selectedAcaraKeys.length > 0) ||
+        (adminTab === 'laporan' && selectedLaporanKeys.length > 0)) && (
+        <div className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-[80] w-[92%] max-w-lg bg-surface-container-lowest/95 backdrop-blur-md border border-surface-container-high rounded-3xl shadow-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+              <CheckSquare size={18} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-on-surface block truncate">
+                <strong className="text-primary">
+                  {adminTab === 'absensi'
+                    ? selectedAbsensiKeys.length
+                    : adminTab === 'asatidz'
+                    ? selectedAsatidzKeys.length
+                    : adminTab === 'acara'
+                    ? selectedAcaraKeys.length
+                    : selectedLaporanKeys.length}
+                </strong>{' '}
+                {adminTab === 'absensi'
+                  ? 'presensi'
+                  : adminTab === 'asatidz'
+                  ? 'asatidz'
+                  : adminTab === 'acara'
+                  ? 'acara'
+                  : 'laporan'}{' '}
+                dipilih
+              </span>
+              {adminTab === 'absensi' && selectedAbsensiKeys.length < filteredAbsensi.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAbsensiKeys(filteredAbsensi.map(getAbsensiKey))}
+                  className="text-[10px] text-primary hover:underline font-bold"
+                >
+                  Pilih semua {filteredAbsensi.length} presensi
+                </button>
+              )}
+              {adminTab === 'asatidz' && selectedAsatidzKeys.length < filteredAsatidz.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAsatidzKeys(filteredAsatidz.map(getAsatidzKey))}
+                  className="text-[10px] text-primary hover:underline font-bold"
+                >
+                  Pilih semua {filteredAsatidz.length} asatidz
+                </button>
+              )}
+              {adminTab === 'acara' && selectedAcaraKeys.length < acaraList.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAcaraKeys(acaraList.map(getAcaraKey))}
+                  className="text-[10px] text-primary hover:underline font-bold"
+                >
+                  Pilih semua {acaraList.length} acara
+                </button>
+              )}
+              {adminTab === 'laporan' && selectedLaporanKeys.length < filteredLaporan.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedLaporanKeys(filteredLaporan.map(getLaporanKey))}
+                  className="text-[10px] text-primary hover:underline font-bold"
+                >
+                  Pilih semua {filteredLaporan.length} laporan
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (adminTab === 'absensi') setSelectedAbsensiKeys([]);
+                else if (adminTab === 'asatidz') setSelectedAsatidzKeys([]);
+                else if (adminTab === 'acara') setSelectedAcaraKeys([]);
+                else if (adminTab === 'laporan') setSelectedLaporanKeys([]);
+              }}
+              className="px-3 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant text-xs font-bold transition active:scale-95"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (adminTab === 'absensi') handleBulkDeleteAbsensi();
+                else if (adminTab === 'asatidz') handleBulkDeleteAsatidz();
+                else if (adminTab === 'acara') handleBulkDeleteAcara();
+                else if (adminTab === 'laporan') handleBulkDeleteLaporan();
+              }}
+              className="px-3.5 sm:px-4 py-2 rounded-xl bg-error hover:bg-red-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-error/25 active:scale-95"
+            >
+              <Trash2 size={15} />
+              <span>
+                Hapus (
+                {adminTab === 'absensi'
+                  ? selectedAbsensiKeys.length
+                  : adminTab === 'asatidz'
+                  ? selectedAsatidzKeys.length
+                  : adminTab === 'acara'
+                  ? selectedAcaraKeys.length
+                  : selectedLaporanKeys.length}
+                )
+              </span>
+            </button>
           </div>
         </div>
       )}
