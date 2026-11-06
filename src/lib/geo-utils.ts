@@ -168,3 +168,80 @@ export function extractCoordinates(url: string): { lat: string; lng: string } {
 
   return { lat: '', lng: '' };
 }
+
+/**
+ * Resolves Google Maps URLs (including shortened links like maps.app.goo.gl and goo.gl/maps)
+ * by following HTTP redirects on the server and extracting coordinates.
+ */
+export async function resolveGoogleMapsUrl(url: string): Promise<{ lat: string; lng: string; resolvedUrl?: string }> {
+  if (!url) return { lat: '', lng: '' };
+
+  const direct = extractCoordinates(url);
+  if (direct.lat && direct.lng) {
+    return { ...direct, resolvedUrl: url };
+  }
+
+  let cleanUrl = url.trim();
+  if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+    cleanUrl = 'https://' + cleanUrl;
+  }
+
+  let resolvedUrl = cleanUrl;
+
+  try {
+    // 1. Try manual redirect first (quickest, catches 301/302 Location header)
+    const resManual = await fetch(cleanUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
+
+    if (resManual.status >= 300 && resManual.status < 400) {
+      const location = resManual.headers.get('location');
+      if (location) {
+        resolvedUrl = location;
+        const coords = extractCoordinates(location);
+        if (coords.lat && coords.lng) {
+          return { ...coords, resolvedUrl };
+        }
+      }
+    }
+
+    // 2. Follow full redirect chain
+    const resFollow = await fetch(resolvedUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
+
+    resolvedUrl = resFollow.url || resolvedUrl;
+    let coords = extractCoordinates(resolvedUrl);
+    if (coords.lat && coords.lng) {
+      return { ...coords, resolvedUrl };
+    }
+
+    // 3. Fallback: inspect response body for meta refresh or embedded coords
+    const html = await resFollow.text();
+    const metaMatch = html.match(/URL=['"]([^'"]+)['"]/i);
+    if (metaMatch) {
+      const metaCoords = extractCoordinates(metaMatch[1]);
+      if (metaCoords.lat && metaCoords.lng) {
+        return { ...metaCoords, resolvedUrl: metaMatch[1] };
+      }
+    }
+
+    coords = extractCoordinates(html);
+    if (coords.lat && coords.lng) {
+      return { ...coords, resolvedUrl };
+    }
+
+    return { lat: '', lng: '', resolvedUrl };
+  } catch (e) {
+    console.warn('Failed to resolve Google Maps link:', e);
+    return { lat: '', lng: '' };
+  }
+}

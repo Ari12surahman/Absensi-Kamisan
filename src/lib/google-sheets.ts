@@ -2,7 +2,7 @@ import { google } from 'googleapis';
 import * as XLSX from 'xlsx';
 import { mockDb } from './mock-db';
 import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem } from '@/types';
-import { parseCoordinate, extractCoordinates } from './geo-utils';
+import { parseCoordinate, extractCoordinates, resolveGoogleMapsUrl } from './geo-utils';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1YC8IBmPgw7bFtJ7GVCZSaunQuD62hUg677S8pcOZHMs';
 const CLIENT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -391,6 +391,19 @@ export async function fetchAcara(): Promise<AcaraItem[]> {
 }
 
 export async function insertAcara(data: Partial<AcaraItem>) {
+  let lat = data.lat || '';
+  let lng = data.lng || '';
+  const mapLink = data.mapLink || '';
+
+  // Auto-resolve coordinates from Google Maps link if lat/lng are empty
+  if ((!lat || !lng) && mapLink) {
+    const resolved = await resolveGoogleMapsUrl(mapLink);
+    if (resolved.lat && resolved.lng) {
+      lat = resolved.lat;
+      lng = resolved.lng;
+    }
+  }
+
   const newId = String(data.id || Date.now());
   const newRow = Number(data.rowIndex) || Date.now();
   deletedAcaraKeys.delete(String(newId));
@@ -401,9 +414,9 @@ export async function insertAcara(data: Partial<AcaraItem>) {
     namaAcara: data.namaAcara || '',
     tanggalAcara: data.tanggalAcara || new Date().toISOString().split('T')[0],
     isHidden: false,
-    mapLink: data.mapLink || '',
-    lat: data.lat || '',
-    lng: data.lng || '',
+    mapLink,
+    lat,
+    lng,
     radius: Number(data.radius) || 150,
   };
 
@@ -415,9 +428,9 @@ export async function insertAcara(data: Partial<AcaraItem>) {
   } else {
     addedAcaraList.unshift(newItem);
   }
-  mockDb.addAcara({ ...data, id: newId, rowIndex: newRow });
+  mockDb.addAcara({ ...data, id: newId, rowIndex: newRow, lat, lng });
 
-  const gasRes = await callGasApi<any>('addAcara', { payload: data }, 'POST');
+  const gasRes = await callGasApi<any>('addAcara', { payload: { ...data, lat, lng } }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
 
   const sheets = getGoogleSheetsClient();
@@ -434,9 +447,9 @@ export async function insertAcara(data: Partial<AcaraItem>) {
               data.namaAcara,
               data.tanggalAcara,
               'FALSE',
-              data.mapLink || '',
-              data.lat || '',
-              data.lng || '',
+              mapLink,
+              lat,
+              lng,
               data.radius || 150,
             ],
           ],
@@ -452,6 +465,14 @@ export async function insertAcara(data: Partial<AcaraItem>) {
 }
 
 export async function updateAcara(rowIndex: number | string, data: Partial<AcaraItem>) {
+  if ((!data.lat || !data.lng) && data.mapLink) {
+    const resolved = await resolveGoogleMapsUrl(data.mapLink);
+    if (resolved.lat && resolved.lng) {
+      data.lat = resolved.lat;
+      data.lng = resolved.lng;
+    }
+  }
+
   if (rowIndex) editedAcaraMap.set(String(rowIndex), { ...editedAcaraMap.get(String(rowIndex)), ...data });
   if (data.id) editedAcaraMap.set(String(data.id), { ...editedAcaraMap.get(String(data.id)), ...data });
   if (data.namaAcara) editedAcaraMap.set(data.namaAcara.trim().toLowerCase(), { ...editedAcaraMap.get(data.namaAcara.trim().toLowerCase()), ...data });

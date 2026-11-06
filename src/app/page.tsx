@@ -121,14 +121,55 @@ export default function SalAppPage() {
   const [inputAcaraLat, setInputAcaraLat] = useState<string>('');
   const [inputAcaraLng, setInputAcaraLng] = useState<string>('');
   const [inputAcaraMapLink, setInputAcaraMapLink] = useState<string>('');
+  const [isResolvingMapLink, setIsResolvingMapLink] = useState<boolean>(false);
+  const [showManualCoords, setShowManualCoords] = useState<boolean>(false);
 
   useEffect(() => {
     if (modalAcara.open) {
       setInputAcaraLat(modalAcara.item?.lat ? String(modalAcara.item.lat) : '');
       setInputAcaraLng(modalAcara.item?.lng ? String(modalAcara.item.lng) : '');
       setInputAcaraMapLink(modalAcara.item?.mapLink || '');
+      setIsResolvingMapLink(false);
+      setShowManualCoords(false);
     }
   }, [modalAcara.open, modalAcara.item]);
+
+  const handleMapLinkChange = async (val: string) => {
+    setInputAcaraMapLink(val);
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setInputAcaraLat('');
+      setInputAcaraLng('');
+      return;
+    }
+
+    // 1. Direct local extraction
+    const coords = extractCoordinates(trimmed);
+    if (coords.lat && coords.lng) {
+      setInputAcaraLat(coords.lat);
+      setInputAcaraLng(coords.lng);
+      showToast('Titik GPS terdeteksi otomatis!');
+      return;
+    }
+
+    // 2. Shortened link or URL requiring redirect resolution (e.g. maps.app.goo.gl)
+    if (trimmed.includes('http') || trimmed.includes('maps') || trimmed.includes('.gl')) {
+      setIsResolvingMapLink(true);
+      try {
+        const res = await fetch(`/api/resolve-maps?url=${encodeURIComponent(trimmed)}`);
+        const json = await res.json();
+        if (json.success && json.lat && json.lng) {
+          setInputAcaraLat(String(json.lat));
+          setInputAcaraLng(String(json.lng));
+          showToast('Titik GPS terdeteksi otomatis dari link Google Maps!');
+        }
+      } catch (err) {
+        console.warn('Resolve map error:', err);
+      } finally {
+        setIsResolvingMapLink(false);
+      }
+    }
+  };
 
   const [modalEditAbsen, setModalEditAbsen] = useState<{ open: boolean; item?: AbsensiRecord }>({ open: false });
   const [modalDivisi, setModalDivisi] = useState<{ open: boolean; item?: DivisiItem }>({ open: false });
@@ -2781,13 +2822,25 @@ export default function SalAppPage() {
                 setModalAcara({ open: false });
                 showToast('Menyimpan data acara...');
 
+                let finalLat = inputAcaraLat.trim();
+                let finalLng = inputAcaraLng.trim();
+                const mapLinkVal = inputAcaraMapLink.trim();
+
+                if ((!finalLat || !finalLng) && mapLinkVal) {
+                  const directCoords = extractCoordinates(mapLinkVal);
+                  if (directCoords.lat && directCoords.lng) {
+                    finalLat = directCoords.lat;
+                    finalLng = directCoords.lng;
+                  }
+                }
+
                 const payload = {
                   namaAcara: nama,
                   tanggalAcara: tgl,
                   radius,
-                  lat: inputAcaraLat.trim(),
-                  lng: inputAcaraLng.trim(),
-                  mapLink: inputAcaraMapLink.trim(),
+                  lat: finalLat,
+                  lng: finalLng,
+                  mapLink: mapLinkVal,
                 };
 
                 if (modalAcara.item) {
@@ -2893,18 +2946,23 @@ export default function SalAppPage() {
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                     <MapPin size={15} className="text-primary" />
-                    <span>Titik Lokasi GPS Kegiatan</span>
+                    <span>Lokasi Kegiatan (Google Maps)</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => {
                       if (typeof navigator !== 'undefined' && navigator.geolocation) {
-                        showToast('Membaca GPS satelit...');
+                        showToast('Membaca GPS perangkat...');
                         navigator.geolocation.getCurrentPosition(
                           pos => {
-                            setInputAcaraLat(pos.coords.latitude.toFixed(6));
-                            setInputAcaraLng(pos.coords.longitude.toFixed(6));
-                            showToast(`Titik GPS tersimpan: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`);
+                            const latStr = pos.coords.latitude.toFixed(6);
+                            const lngStr = pos.coords.longitude.toFixed(6);
+                            setInputAcaraLat(latStr);
+                            setInputAcaraLng(lngStr);
+                            if (!inputAcaraMapLink) {
+                              setInputAcaraMapLink(`https://www.google.com/maps?q=${latStr},${lngStr}`);
+                            }
+                            showToast(`Titik GPS tersimpan: ${latStr}, ${lngStr}`);
                           },
                           err => showToast('Gagal membaca GPS: ' + err.message, 'error'),
                           { enableHighAccuracy: true, timeout: 8000 }
@@ -2924,51 +2982,32 @@ export default function SalAppPage() {
                   <input
                     type="text"
                     value={inputAcaraMapLink}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setInputAcaraMapLink(val);
-                      const coords = extractCoordinates(val);
-                      if (coords.lat && coords.lng) {
-                        setInputAcaraLat(coords.lat);
-                        setInputAcaraLng(coords.lng);
-                        showToast('Koordinat berhasil diekstrak dari link!');
-                      }
-                    }}
-                    placeholder="Tempel link Google Maps atau koordinat"
+                    onChange={e => handleMapLinkChange(e.target.value)}
+                    placeholder="Tempel link Google Maps (contoh: https://maps.app.goo.gl/...)"
                     className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-lowest"
                   />
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    Cukup tempel link Google Maps saja. Titik koordinat akan dideteksi dan tersimpan otomatis!
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-[10px] font-bold text-on-surface-variant block mb-0.5">Latitude:</span>
-                    <input
-                      type="text"
-                      value={inputAcaraLat}
-                      onChange={e => setInputAcaraLat(e.target.value)}
-                      placeholder="Misal: -6.175392"
-                      className="w-full border border-surface-container-high rounded-xl p-2 text-xs font-mono outline-none focus:border-primary bg-surface-container-lowest"
-                    />
+                {/* Status Geofencing Indikator */}
+                {isResolvingMapLink ? (
+                  <div className="flex items-center gap-2 text-xs text-primary bg-primary/10 border border-primary/20 px-3 py-2 rounded-xl">
+                    <RefreshCw size={13} className="animate-spin text-primary" />
+                    <span className="text-[11px] font-medium">Mendeteksi titik koordinat otomatis dari link...</span>
                   </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-on-surface-variant block mb-0.5">Longitude:</span>
-                    <input
-                      type="text"
-                      value={inputAcaraLng}
-                      onChange={e => setInputAcaraLng(e.target.value)}
-                      placeholder="Misal: 106.827153"
-                      className="w-full border border-surface-container-high rounded-xl p-2 text-xs font-mono outline-none focus:border-primary bg-surface-container-lowest"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] text-on-surface-variant">
-                    {inputAcaraLat && inputAcaraLng
-                      ? '✅ Geofencing GPS Aktif'
-                      : '🔓 Bebas Radius (Bisa absen di mana saja)'}
-                  </span>
-                  {(inputAcaraLat || inputAcaraLng) && (
+                ) : inputAcaraLat && inputAcaraLng ? (
+                  <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-600 text-sm">✅</span>
+                      <div>
+                        <span className="font-bold block text-[11px] text-emerald-900 dark:text-emerald-200">Titik Koordinat Otomatis Aktif</span>
+                        <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+                          {inputAcaraLat}, {inputAcaraLng}
+                        </span>
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
@@ -2977,10 +3016,50 @@ export default function SalAppPage() {
                         setInputAcaraMapLink('');
                         showToast('Geofence dinonaktifkan (Bebas Radius)');
                       }}
-                      className="text-[10px] text-error font-bold hover:underline"
+                      className="text-[10px] font-bold text-red-600 hover:underline px-1 py-0.5"
                     >
-                      Jadikan Bebas Lokasi
+                      Hapus
                     </button>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-on-surface-variant bg-surface-container-lowest p-2 rounded-xl border border-surface-container-high">
+                    <span>🔓 <strong>Bebas Radius:</strong> Jika tidak mengisi link maps, santri/asatidz bisa presensi di mana saja.</span>
+                  </div>
+                )}
+
+                {/* Opsi Pengaturan Koordinat Manual (Opsional / Collapsible) */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualCoords(!showManualCoords)}
+                    className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <span>{showManualCoords ? '▾ Sembunyikan Koordinat Manual' : '▸ Atur Koordinat Manual (Opsional)'}</span>
+                  </button>
+
+                  {showManualCoords && (
+                    <div className="grid grid-cols-2 gap-2 mt-2 pt-1 border-t border-surface-container-high/60">
+                      <div>
+                        <span className="text-[10px] font-bold text-on-surface-variant block mb-0.5">Latitude:</span>
+                        <input
+                          type="text"
+                          value={inputAcaraLat}
+                          onChange={e => setInputAcaraLat(e.target.value)}
+                          placeholder="Misal: -6.777152"
+                          className="w-full border border-surface-container-high rounded-xl p-2 text-xs font-mono outline-none focus:border-primary bg-surface-container-lowest"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-on-surface-variant block mb-0.5">Longitude:</span>
+                        <input
+                          type="text"
+                          value={inputAcaraLng}
+                          onChange={e => setInputAcaraLng(e.target.value)}
+                          placeholder="Misal: 108.414820"
+                          className="w-full border border-surface-container-high rounded-xl p-2 text-xs font-mono outline-none focus:border-primary bg-surface-container-lowest"
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
