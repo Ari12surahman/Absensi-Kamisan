@@ -25,6 +25,7 @@ function doGet(e) {
     if (action === 'getAcara') result = getAcara();
     else if (action === 'getAbsensi') result = getAbsensi();
     else if (action === 'getDivisi') result = getDivisi();
+    else if (action === 'getAsatidz') result = getAsatidz();
     else if (action === 'getLaporanDivisi') result = getLaporanDivisi();
     else if (action === 'toggleStatusAcara') {
       var hide = p.hideStatus === 'true' || p.hideStatus === true || p.hideStatus === '1';
@@ -92,6 +93,12 @@ function doPost(e) {
       result = updateDivisi(Number(data.rowIndex), data.payload || data);
     } else if (action === 'deleteDivisi') {
       result = deleteDivisi(Number(data.rowIndex));
+    } else if (action === 'addAsatidz') {
+      result = addAsatidz(data.payload || data);
+    } else if (action === 'updateAsatidz') {
+      result = updateAsatidz(Number(data.rowIndex), data.payload || data);
+    } else if (action === 'deleteAsatidz') {
+      result = deleteAsatidz(Number(data.rowIndex), data.id, data.nama);
     } else if (action === 'submitLaporanDivisi') {
       result = submitLaporanDivisi(data.payload || data);
     } else if (action === 'updateLaporanDivisi') {
@@ -132,6 +139,9 @@ function getDbSheet(sheetName) {
       sheet.appendRow([(baseId + 2).toString(), "Divisi Keuangan & Usaha", "Mengelola keuangan, kas, dan usaha mandiri", "Aktif"]);
       sheet.appendRow([(baseId + 3).toString(), "Divisi Logistik & Perlengkapan", "Mengelola inventaris dan peralatan", "Aktif"]);
       sheet.appendRow([(baseId + 4).toString(), "Divisi Media & Dokumentasi", "Mengelola konten, medsos, dan arsip", "Aktif"]);
+    } else if (sheetName === 'Data_Asatidz') {
+      sheet.appendRow(["ID", "Nama Asatidz", "Jabatan", "Status"]);
+      sheet.setFrozenRows(1);
     } else if (sheetName === 'Data_Laporan_Divisi') {
       sheet.appendRow(["ID", "Waktu", "Divisi", "Nama Pelapor", "Periode", "Hasil Usaha", "Program Kerja Pekan Depan", "Evaluasi", "Laporan Dana"]);
       sheet.setFrozenRows(1);
@@ -447,4 +457,57 @@ function deleteLaporanDivisi(rowIndex) {
     return { success: false, message: "Error: " + error.toString() };
   }
 }
+
+// ==========================================
+// CRUD ASATIDZ (MASTER NAMA)
+// ==========================================
+function getAsatidz() {
+  const sheet = getDbSheet('Data_Asatidz');
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+  const list = [];
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    if (row[1]) {
+      list.push({
+        rowIndex: i + 1,
+        id: String(row[0] || i),
+        nama: String(row[1]).trim(),
+        jabatan: String(row[2] || 'Asatidz Pengajar'),
+        status: String(row[3] || 'Aktif')
+      });
+    }
+  }
+  return list;
+}
+
+function addAsatidz(data) {
+  const sheet = getDbSheet('Data_Asatidz');
+  const id = (data && data.id) ? String(data.id) : new Date().getTime().toString();
+  sheet.appendRow([id, (data.nama || '').trim(), data.jabatan || 'Asatidz Pengajar', data.status || 'Aktif']);
+  return { success: true, message: "Data asatidz berhasil ditambahkan!", id: id };
+}
+
+function updateAsatidz(rowIndex, data) {
+  try {
+    const sheet = getDbSheet('Data_Asatidz');
+    if (data.nama) sheet.getRange(rowIndex, 2).setValue(data.nama.trim());
+    if (data.jabatan) sheet.getRange(rowIndex, 3).setValue(data.jabatan);
+    if (data.status) sheet.getRange(rowIndex, 4).setValue(data.status);
+    return { success: true, message: "Data asatidz berhasil diperbarui!" };
+  } catch (error) {
+    return { success: false, message: "Error: " + error.toString() };
+  }
+}
+
+function deleteAsatidz(rowIndex, id, nama) {
+  try {
+    const sheet = getDbSheet('Data_Asatidz');
+    sheet.deleteRow(rowIndex);
+    return { success: true, message: "Data asatidz berhasil dihapus!" };
+  } catch (error) {
+    return { success: false, message: "Error: " + error.toString() };
+  }
+}
+
 

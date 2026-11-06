@@ -1,6 +1,28 @@
-import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem } from '@/types';
+import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem, AsatidzItem } from '@/types';
 
 // Default initial datasets
+let mockAsatidz: AsatidzItem[] = [
+  { rowIndex: 2, id: '1', nama: 'Ari Surahman', jabatan: 'Pembina / Asatidz', status: 'Aktif' },
+  { rowIndex: 3, id: '2', nama: 'Prayoga Wicaksana', jabatan: 'Koordinator Asatidz', status: 'Aktif' },
+  { rowIndex: 4, id: '3', nama: 'Suhendi', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 5, id: '4', nama: 'M. Tamimi', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 6, id: '5', nama: 'Miftah Ali Mubarok', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 7, id: '6', nama: 'Zaki Hidayat', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 8, id: '7', nama: 'Yuliah elitha', jabatan: 'Ustadzah Pengajar', status: 'Aktif' },
+  { rowIndex: 9, id: '8', nama: 'Mukhammad evan valentino', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 10, id: '9', nama: 'Rafa syabama', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 11, id: '10', nama: 'Indri Septiani', jabatan: 'Ustadzah Pengajar', status: 'Aktif' },
+  { rowIndex: 12, id: '11', nama: 'Gina Amalia Putri', jabatan: 'Ustadzah Pengajar', status: 'Aktif' },
+  { rowIndex: 13, id: '12', nama: 'Fauziah Nuraulia', jabatan: 'Ustadzah Pengajar', status: 'Aktif' },
+  { rowIndex: 14, id: '13', nama: 'Ujang fauzan', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 15, id: '14', nama: 'Mila Tirta N.D', jabatan: 'Ustadzah Pengajar', status: 'Aktif' },
+  { rowIndex: 16, id: '15', nama: 'Aay Bariyyatul Khotimah', jabatan: 'Ustadzah Pengajar', status: 'Aktif' },
+  { rowIndex: 17, id: '16', nama: 'IKO FAJRIATURRIZQOH', jabatan: 'Ustadzah Pengajar', status: 'Aktif' },
+  { rowIndex: 18, id: '17', nama: 'Dzikri Abdullah', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 19, id: '18', nama: 'Fajar Apriansyah', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+  { rowIndex: 20, id: '19', nama: 'Eddi Yahdi', jabatan: 'Asatidz Pengajar', status: 'Aktif' },
+];
+
 let mockDivisi: DivisiItem[] = [
   { rowIndex: 2, id: '1', namaDivisi: 'Divisi Operasional & Logistik', keterangan: 'Mengelola operasional harian dan logistik perlengkapan', status: 'Aktif' },
   { rowIndex: 3, id: '2', namaDivisi: 'Divisi IT, Sistem & Komunikasi', keterangan: 'Mengelola infrastruktur IT dan server sinkronisasi', status: 'Aktif' },
@@ -215,6 +237,39 @@ export const mockDb = {
   deleteLaporan: (idOrRow: string | number) => {
     mockLaporan = mockLaporan.filter(
       l => String(l.id) !== String(idOrRow) && String(l.rowIndex) !== String(idOrRow)
+    );
+    return true;
+  },
+
+  // Asatidz
+  getAsatidz: () => [...mockAsatidz],
+  addAsatidz: (item: Partial<AsatidzItem>) => {
+    const newId = item.id ? String(item.id) : Date.now().toString();
+    const newRow = item.rowIndex ? Number(item.rowIndex) : Date.now();
+    const record: AsatidzItem = {
+      rowIndex: newRow,
+      id: newId,
+      nama: (item.nama || '').trim(),
+      jabatan: item.jabatan || 'Asatidz Pengajar',
+      status: item.status || 'Aktif',
+    };
+    mockAsatidz.unshift(record);
+    return record;
+  },
+  updateAsatidz: (idOrRow: string | number, data: Partial<AsatidzItem>) => {
+    mockAsatidz = mockAsatidz.map(a =>
+      String(a.id) === String(idOrRow) || String(a.rowIndex) === String(idOrRow) || (a.nama && a.nama.toLowerCase() === (data.nama || '').toLowerCase())
+        ? { ...a, ...data }
+        : a
+    );
+    return true;
+  },
+  deleteAsatidz: (idOrRow: string | number, nama?: string) => {
+    mockAsatidz = mockAsatidz.filter(
+      a =>
+        String(a.id) !== String(idOrRow) &&
+        String(a.rowIndex) !== String(idOrRow) &&
+        !(nama && a.nama.toLowerCase() === nama.toLowerCase())
     );
     return true;
   },

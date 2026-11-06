@@ -28,6 +28,14 @@ export interface DivisiItem {
   status: 'Aktif' | 'Non-Aktif' | string;
 }
 
+export interface AsatidzItem {
+  rowIndex?: number;
+  id: string;
+  nama: string;
+  jabatan?: string;
+  status?: 'Aktif' | 'Non-Aktif' | string;
+}
+
 export interface LaporanItem {
   rowIndex?: number;
   id: string;

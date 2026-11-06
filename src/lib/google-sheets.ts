@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import * as XLSX from 'xlsx';
 import { mockDb } from './mock-db';
-import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem } from '@/types';
+import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem, AsatidzItem } from '@/types';
 import { parseCoordinate, extractCoordinates, resolveGoogleMapsUrl } from './geo-utils';
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1YC8IBmPgw7bFtJ7GVCZSaunQuD62hUg677S8pcOZHMs';
@@ -914,4 +914,181 @@ export async function deleteLaporan(rowIndex: number | string, id?: string) {
   const gasRes = await callGasApi<any>('deleteLaporanDivisi', { rowIndex, id }, 'POST');
   if (gasRes && gasRes.success) return gasRes;
   return { success: true, message: 'Laporan berhasil dihapus!' };
+}
+
+// ==========================================
+// ASATIDZ (MASTER NAMA)
+// ==========================================
+const deletedAsatidzKeys = new Set<string>();
+const editedAsatidzMap = new Map<string, Partial<AsatidzItem>>();
+const addedAsatidzList: AsatidzItem[] = [];
+
+export async function fetchAsatidz(): Promise<AsatidzItem[]> {
+  const isDeleted = (a: AsatidzItem) =>
+    deletedAsatidzKeys.has(String(a.id)) ||
+    deletedAsatidzKeys.has(String(a.rowIndex)) ||
+    deletedAsatidzKeys.has((a.nama || '').trim().toLowerCase());
+
+  const applyEdit = (a: AsatidzItem): AsatidzItem => {
+    const edit =
+      editedAsatidzMap.get(String(a.id)) ||
+      editedAsatidzMap.get(String(a.rowIndex)) ||
+      editedAsatidzMap.get((a.nama || '').trim().toLowerCase());
+    return edit ? { ...a, ...edit } : a;
+  };
+
+  const mergeResults = (baseList: AsatidzItem[]) => {
+    const filtered = baseList.filter(a => !isDeleted(a)).map(applyEdit);
+    const added = addedAsatidzList.filter(a => !isDeleted(a)).map(applyEdit);
+    const combined = [...added, ...filtered];
+
+    const seen = new Set<string>();
+    const result: AsatidzItem[] = [];
+    for (const item of combined) {
+      const keyId = String(item.id || item.rowIndex);
+      const keyName = (item.nama || '').trim().toLowerCase();
+      if (!seen.has(keyId) && (!keyName || !seen.has('name_' + keyName))) {
+        seen.add(keyId);
+        if (keyName) seen.add('name_' + keyName);
+        result.push(item);
+      }
+    }
+    return result;
+  };
+
+  // 1. Try Google Apps Script API Bridge
+  const gasData = await callGasApi<AsatidzItem[]>('getAsatidz');
+  if (gasData && Array.isArray(gasData) && gasData.length > 0) {
+    return mergeResults(gasData);
+  }
+
+  // 2. Try Public Google Sheets CSV export
+  const csvRows = await fetchCsvSheet('Data_Asatidz');
+  if (csvRows && csvRows.length > 1) {
+    const list = csvRows
+      .slice(1)
+      .map((row, index) => ({
+        rowIndex: index + 2,
+        id: String(row[0] || index + 1),
+        nama: String(row[1] || '').trim(),
+        jabatan: String(row[2] || 'Asatidz Pengajar'),
+        status: String(row[3] || 'Aktif'),
+      }))
+      .filter(a => a.nama !== '');
+    if (list.length > 0) return mergeResults(list);
+  }
+
+  // 3. Try Google Sheets API v4
+  const sheets = getGoogleSheetsClient();
+  if (sheets) {
+    try {
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: 'Data_Asatidz!A2:D',
+      });
+      const rows = res.data.values;
+      if (rows && rows.length > 0) {
+        const list = rows
+          .map((row, index) => ({
+            rowIndex: index + 2,
+            id: row[0] || String(index + 1),
+            nama: row[1] || '',
+            jabatan: row[2] || 'Asatidz Pengajar',
+            status: row[3] || 'Aktif',
+          }))
+          .filter(a => a.nama.trim() !== '');
+        return mergeResults(list);
+      }
+    } catch (e) {
+      console.warn('Sheets API Asatidz error:', e);
+    }
+  }
+
+  // 4. Default: fallback to mockDb seeded asatidz
+  return mergeResults(mockDb.getAsatidz());
+}
+
+export async function insertAsatidz(data: Partial<AsatidzItem>) {
+  const newId = String(data.id || Date.now());
+  const newRow = Number(data.rowIndex) || Date.now();
+  deletedAsatidzKeys.delete(String(newId));
+  deletedAsatidzKeys.delete(String(newRow));
+  if (data.nama) deletedAsatidzKeys.delete(data.nama.trim().toLowerCase());
+
+  const newItem: AsatidzItem = {
+    rowIndex: newRow,
+    id: newId,
+    nama: (data.nama || '').trim(),
+    jabatan: data.jabatan || 'Asatidz Pengajar',
+    status: data.status || 'Aktif',
+  };
+
+  const existingIdx = addedAsatidzList.findIndex(
+    a => String(a.id) === newId || (a.nama && a.nama.trim().toLowerCase() === newItem.nama.toLowerCase())
+  );
+  if (existingIdx !== -1) {
+    addedAsatidzList[existingIdx] = newItem;
+  } else {
+    addedAsatidzList.unshift(newItem);
+  }
+  mockDb.addAsatidz(newItem);
+
+  const gasRes = await callGasApi<any>('addAsatidz', { payload: newItem }, 'POST');
+  if (gasRes && gasRes.success) return gasRes;
+
+  const sheets = getGoogleSheetsClient();
+  if (sheets) {
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SHEET_ID,
+        range: 'Data_Asatidz!A:D',
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [[newId, newItem.nama, newItem.jabatan, newItem.status]],
+        },
+      });
+      return { success: true, message: 'Asatidz berhasil ditambahkan ke Google Sheets!', data: newItem };
+    } catch (e) {
+      console.warn('Sheets API append Asatidz error:', e);
+    }
+  }
+
+  return { success: true, message: 'Asatidz berhasil disimpan!', data: newItem };
+}
+
+export async function updateAsatidz(rowIndex: number | string, data: Partial<AsatidzItem>) {
+  if (rowIndex) editedAsatidzMap.set(String(rowIndex), { ...editedAsatidzMap.get(String(rowIndex)), ...data });
+  if (data.id) editedAsatidzMap.set(String(data.id), { ...editedAsatidzMap.get(String(data.id)), ...data });
+  if (data.nama) editedAsatidzMap.set(data.nama.trim().toLowerCase(), { ...editedAsatidzMap.get(data.nama.trim().toLowerCase()), ...data });
+
+  const idx = addedAsatidzList.findIndex(a => String(a.id) === String(rowIndex) || String(a.rowIndex) === String(rowIndex));
+  if (idx !== -1) {
+    addedAsatidzList[idx] = { ...addedAsatidzList[idx], ...data };
+  }
+  mockDb.updateAsatidz(rowIndex, data);
+
+  const gasRes = await callGasApi<any>('updateAsatidz', { rowIndex, payload: data }, 'POST');
+  if (gasRes && gasRes.success) return gasRes;
+  return { success: true, message: 'Data asatidz berhasil diperbarui!' };
+}
+
+export async function deleteAsatidz(rowIndex: number | string, id?: string, nama?: string) {
+  if (rowIndex) deletedAsatidzKeys.add(String(rowIndex));
+  if (id) deletedAsatidzKeys.add(String(id));
+  if (nama) deletedAsatidzKeys.add(nama.trim().toLowerCase());
+
+  const idx = addedAsatidzList.findIndex(a =>
+    String(a.id) === String(rowIndex) ||
+    String(a.rowIndex) === String(rowIndex) ||
+    (id && String(a.id) === String(id)) ||
+    (nama && a.nama.toLowerCase() === nama.toLowerCase())
+  );
+  if (idx !== -1) {
+    addedAsatidzList.splice(idx, 1);
+  }
+  mockDb.deleteAsatidz(rowIndex, nama);
+
+  const gasRes = await callGasApi<any>('deleteAsatidz', { rowIndex, id, nama }, 'POST');
+  if (gasRes && gasRes.success) return gasRes;
+  return { success: true, message: 'Data asatidz berhasil dihapus!' };
 }

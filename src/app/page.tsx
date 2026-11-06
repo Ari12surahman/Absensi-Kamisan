@@ -27,6 +27,9 @@ import {
   Send,
   Building,
   User,
+  Users,
+  UserCheck,
+  Sparkles,
   Radio,
   Sliders,
   DollarSign,
@@ -34,7 +37,7 @@ import {
   Check,
   X
 } from 'lucide-react';
-import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem } from '@/types';
+import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem, AsatidzItem } from '@/types';
 import { getDistanceFromLatLonInM, formatDistance, extractCoordinates, parseCoordinate } from '@/lib/geo-utils';
 import {
   exportExcelPresensi,
@@ -47,7 +50,7 @@ export default function SalAppPage() {
   // Navigation & View States
   const [currentView, setCurrentView] = useState<'portal' | 'login' | 'admin'>('portal');
   const [portalTab, setPortalTab] = useState<'absensi' | 'laporan'>('absensi');
-  const [adminTab, setAdminTab] = useState<'absensi' | 'acara' | 'laporan' | 'divisi'>('absensi');
+  const [adminTab, setAdminTab] = useState<'absensi' | 'acara' | 'asatidz' | 'laporan' | 'divisi'>('absensi');
 
   // Real-time Clock & Date
   const [currentTime, setCurrentTime] = useState<string>('');
@@ -64,30 +67,35 @@ export default function SalAppPage() {
   const [absensiList, setAbsensiList] = useState<AbsensiRecord[]>([]);
   const [acaraList, setAcaraList] = useState<AcaraItem[]>([]);
   const [divisiList, setDivisiList] = useState<DivisiItem[]>([]);
+  const [asatidzList, setAsatidzList] = useState<AsatidzItem[]>([]);
   const [laporanList, setLaporanList] = useState<LaporanItem[]>([]);
 
   // Loading States
   const [loadingAbsensi, setLoadingAbsensi] = useState(false);
   const [loadingAcara, setLoadingAcara] = useState(false);
   const [loadingDivisi, setLoadingDivisi] = useState(false);
+  const [loadingAsatidz, setLoadingAsatidz] = useState(false);
   const [loadingLaporan, setLoadingLaporan] = useState(false);
 
   // Pagination States (10 items per page)
   const PAGE_SIZE = 10;
   const [pageAbsensi, setPageAbsensi] = useState(1);
   const [pageAcara, setPageAcara] = useState(1);
+  const [pageAsatidz, setPageAsatidz] = useState(1);
   const [pageLaporan, setPageLaporan] = useState(1);
   const [pageDivisi, setPageDivisi] = useState(1);
 
   // Filters & Search
   const [filterAcaraAdmin, setFilterAcaraAdmin] = useState('');
   const [searchAbsensiAdmin, setSearchAbsensiAdmin] = useState('');
+  const [searchAsatidzAdmin, setSearchAsatidzAdmin] = useState('');
   const [filterDivisiAdmin, setFilterDivisiAdmin] = useState('');
   const [searchLaporanAdmin, setSearchLaporanAdmin] = useState('');
 
   // Form Presensi State
   const [formAbsenAcara, setFormAbsenAcara] = useState('');
   const [formAbsenNama, setFormAbsenNama] = useState('');
+  const [namaInputFocused, setNamaInputFocused] = useState(false);
   const [formAbsenStatus, setFormAbsenStatus] = useState<'Hadir' | 'Izin' | 'Sakit'>('Hadir');
   const [formAbsenKet, setFormAbsenKet] = useState('');
   const [submittingAbsen, setSubmittingAbsen] = useState(false);
@@ -173,6 +181,7 @@ export default function SalAppPage() {
 
   const [modalEditAbsen, setModalEditAbsen] = useState<{ open: boolean; item?: AbsensiRecord }>({ open: false });
   const [modalDivisi, setModalDivisi] = useState<{ open: boolean; item?: DivisiItem }>({ open: false });
+  const [modalAsatidz, setModalAsatidz] = useState<{ open: boolean; item?: AsatidzItem }>({ open: false });
   const [modalDetailLaporan, setModalDetailLaporan] = useState<{ open: boolean; item?: LaporanItem }>({ open: false });
   const [modalEditLaporan, setModalEditLaporan] = useState<{ open: boolean; item?: LaporanItem }>({ open: false });
 
@@ -234,7 +243,33 @@ export default function SalAppPage() {
   useEffect(() => {
     fetchAcaraData();
     fetchDivisiData();
+    fetchAsatidzData();
   }, []);
+
+  const getInitials = (name?: string) => {
+    return (name || 'AS')
+      .split(' ')
+      .filter(Boolean)
+      .map(n => n[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+  };
+
+  // Searchable Asatidz Suggestions for Attendance Form
+  const filteredAsatidzSuggestions = useMemo(() => {
+    const q = formAbsenNama.trim().toLowerCase();
+    if (!q) {
+      return asatidzList.slice(0, 8);
+    }
+    return asatidzList
+      .filter(a => a.nama.toLowerCase().includes(q) || (a.jabatan && a.jabatan.toLowerCase().includes(q)))
+      .slice(0, 10);
+  }, [formAbsenNama, asatidzList]);
+
+  const isRegisteredAsatidz = useMemo(() => {
+    return asatidzList.some(a => a.nama.trim().toLowerCase() === formAbsenNama.trim().toLowerCase());
+  }, [formAbsenNama, asatidzList]);
 
   // Selected Acara Object
   const selectedAcaraObj = useMemo(() => {
@@ -570,6 +605,65 @@ export default function SalAppPage() {
     }
   };
 
+  const fetchAsatidzData = async () => {
+    setLoadingAsatidz(true);
+    try {
+      const res = await fetch('/api/asatidz');
+      const json = await res.json();
+      if (json.success) {
+        const deletedKeys = getStoredList<string>('salapp_deleted_asatidz');
+        const customAdded = getStoredList<AsatidzItem>('salapp_custom_asatidz');
+        const editedMap = new Map<string, Partial<AsatidzItem>>(
+          getStoredList<[string, Partial<AsatidzItem>]>('salapp_edited_asatidz')
+        );
+
+        const isDeleted = (id?: string | number, rowIndex?: string | number, nama?: string) =>
+          (id && deletedKeys.includes(String(id))) ||
+          (rowIndex && deletedKeys.includes(String(rowIndex))) ||
+          (nama && deletedKeys.includes(nama.trim().toLowerCase()));
+
+        const activeCustom = customAdded
+          .filter(a => !isDeleted(a.id, a.rowIndex, a.nama))
+          .map(a => {
+            const edit =
+              editedMap.get(String(a.id)) ||
+              editedMap.get(String(a.rowIndex)) ||
+              (a.nama ? editedMap.get(a.nama.trim().toLowerCase()) : undefined);
+            return edit ? { ...a, ...edit } : a;
+          });
+
+        const serverMerged = (json.data || [])
+          .filter((a: AsatidzItem) => !isDeleted(a.id, a.rowIndex, a.nama))
+          .map((a: AsatidzItem) => {
+            const edit =
+              editedMap.get(String(a.id)) ||
+              editedMap.get(String(a.rowIndex)) ||
+              (a.nama ? editedMap.get(a.nama.trim().toLowerCase()) : undefined);
+            return edit ? { ...a, ...edit } : a;
+          });
+
+        const seen = new Set<string>();
+        const finalAsatidzList: AsatidzItem[] = [];
+
+        for (const item of [...activeCustom, ...serverMerged]) {
+          const keyId = String(item.id || item.rowIndex);
+          const keyName = (item.nama || '').trim().toLowerCase();
+          if (!seen.has(keyId) && (!keyName || !seen.has('name_' + keyName))) {
+            seen.add(keyId);
+            if (keyName) seen.add('name_' + keyName);
+            finalAsatidzList.push(item);
+          }
+        }
+
+        setAsatidzList(finalAsatidzList);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingAsatidz(false);
+    }
+  };
+
   const fetchLaporanData = async () => {
     setLoadingLaporan(true);
     try {
@@ -782,11 +876,98 @@ export default function SalAppPage() {
     });
   };
 
+  const handleDeleteAsatidz = (item: AsatidzItem) => {
+    requestConfirm({
+      title: 'Hapus Data Asatidz',
+      message: `Apakah Anda yakin ingin menghapus data asatidz "${item.nama}" dari daftar master?`,
+      confirmLabel: 'Ya, Hapus Asatidz',
+      isDanger: true,
+      onConfirm: async () => {
+        const key = String(item.id || item.rowIndex);
+        addStoredKey('salapp_deleted_asatidz', key);
+        if (item.id) addStoredKey('salapp_deleted_asatidz', String(item.id));
+        if (item.rowIndex) addStoredKey('salapp_deleted_asatidz', String(item.rowIndex));
+        if (item.nama) addStoredKey('salapp_deleted_asatidz', item.nama.trim().toLowerCase());
+
+        const customList = getStoredList<AsatidzItem>('salapp_custom_asatidz').filter(
+          a =>
+            String(a.id) !== key &&
+            String(a.rowIndex) !== key &&
+            !(item.id && String(a.id) === String(item.id)) &&
+            !(item.rowIndex && String(a.rowIndex) === String(item.rowIndex)) &&
+            !(item.nama && a.nama.trim().toLowerCase() === item.nama.trim().toLowerCase())
+        );
+        saveStoredList('salapp_custom_asatidz', customList);
+
+        setAsatidzList(prev =>
+          prev.filter(
+            a =>
+              String(a.id || a.rowIndex) !== key &&
+              !(item.id && String(a.id) === String(item.id)) &&
+              !(item.rowIndex && String(a.rowIndex) === String(item.rowIndex)) &&
+              !(item.nama && a.nama.trim().toLowerCase() === item.nama.trim().toLowerCase())
+          )
+        );
+
+        await fetch(`/api/asatidz?id=${item.id}&rowIndex=${item.rowIndex || ''}&nama=${encodeURIComponent(item.nama)}`, { method: 'DELETE' });
+        showToast('Data asatidz berhasil dihapus!');
+        fetchAsatidzData();
+      },
+    });
+  };
+
+  const handleSyncAsatidzFromAbsensi = async () => {
+    showToast('Memindai riwayat presensi...');
+    const existingNames = new Set(asatidzList.map(a => a.nama.trim().toLowerCase()));
+    const newNames: string[] = [];
+
+    for (const record of absensiList) {
+      const cleanName = (record.nama || '').trim();
+      if (cleanName && cleanName !== '-' && !existingNames.has(cleanName.toLowerCase())) {
+        existingNames.add(cleanName.toLowerCase());
+        newNames.push(cleanName);
+      }
+    }
+
+    if (newNames.length === 0) {
+      showToast('Semua nama dari riwayat presensi sudah terdaftar di Master Asatidz!');
+      return;
+    }
+
+    showToast(`Menambahkan ${newNames.length} nama baru ke Master Asatidz...`);
+    for (const name of newNames) {
+      const newId = Date.now().toString() + Math.floor(Math.random() * 1000);
+      const newRow = Date.now() + Math.floor(Math.random() * 1000);
+      const newItem: AsatidzItem = {
+        id: newId,
+        rowIndex: newRow,
+        nama: name,
+        jabatan: 'Asatidz Pengajar',
+        status: 'Aktif',
+      };
+      const customList = getStoredList<AsatidzItem>('salapp_custom_asatidz');
+      customList.unshift(newItem);
+      saveStoredList('salapp_custom_asatidz', customList);
+
+      setAsatidzList(prev => [newItem, ...prev]);
+
+      await fetch('/api/asatidz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newItem),
+      });
+    }
+
+    showToast(`Berhasil menambahkan ${newNames.length} asatidz baru dari riwayat!`);
+    fetchAsatidzData();
+  };
+
   // On Switch to Admin -> Fetch data on-demand (lazy)
   useEffect(() => {
     if (currentView === 'admin') {
       if (adminTab === 'absensi' && absensiList.length === 0) fetchAbsensiData();
       if (adminTab === 'acara' && acaraList.length === 0) fetchAcaraData();
+      if (adminTab === 'asatidz' && asatidzList.length === 0) fetchAsatidzData();
       if (adminTab === 'laporan' && laporanList.length === 0) fetchLaporanData();
       if (adminTab === 'divisi' && divisiList.length === 0) fetchDivisiData();
     }
@@ -997,6 +1178,20 @@ export default function SalAppPage() {
     });
   }, [laporanList, filterDivisiAdmin, searchLaporanAdmin]);
 
+  const filteredAsatidz = useMemo(() => {
+    let list = asatidzList;
+    if (searchAsatidzAdmin.trim()) {
+      const q = searchAsatidzAdmin.toLowerCase();
+      list = list.filter(
+        a =>
+          a.nama.toLowerCase().includes(q) ||
+          (a.jabatan && a.jabatan.toLowerCase().includes(q)) ||
+          (a.status && a.status.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [asatidzList, searchAsatidzAdmin]);
+
   // Paginated Items
   const paginatedAbsensi = useMemo(() => {
     const start = (pageAbsensi - 1) * PAGE_SIZE;
@@ -1007,6 +1202,11 @@ export default function SalAppPage() {
     const start = (pageAcara - 1) * PAGE_SIZE;
     return acaraList.slice(start, start + PAGE_SIZE);
   }, [acaraList, pageAcara]);
+
+  const paginatedAsatidz = useMemo(() => {
+    const start = (pageAsatidz - 1) * PAGE_SIZE;
+    return filteredAsatidz.slice(start, start + PAGE_SIZE);
+  }, [filteredAsatidz, pageAsatidz]);
 
   const paginatedLaporan = useMemo(() => {
     const start = (pageLaporan - 1) * PAGE_SIZE;
@@ -1155,20 +1355,102 @@ export default function SalAppPage() {
                     </select>
                   </div>
 
-                  {/* Input Nama Lengkap */}
-                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-2">
-                    <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                      <User size={16} className="text-primary" />
-                      <span>Nama Lengkap Asatidz / Pengajar <span className="text-error">*</span></span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formAbsenNama}
-                      onChange={e => setFormAbsenNama(e.target.value)}
-                      placeholder="Contoh: Ust. Dzikri Abdullah"
-                      required
-                      className="w-full bg-surface-container-low text-on-surface text-xs font-semibold rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition"
-                    />
+                  {/* Input Nama Lengkap (Searchable Auto-suggest Combobox) */}
+                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-2 relative">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                        <User size={16} className="text-primary" />
+                        <span>Nama Lengkap Asatidz / Pengajar <span className="text-error">*</span></span>
+                      </label>
+                      {formAbsenNama.trim() && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                            isRegisteredAsatidz
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {isRegisteredAsatidz ? '✅ Terdaftar' : 'ℹ️ Nama Bebas'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        list="asatidz-datalist"
+                        value={formAbsenNama}
+                        onChange={e => setFormAbsenNama(e.target.value)}
+                        onFocus={() => setNamaInputFocused(true)}
+                        onBlur={() => setTimeout(() => setNamaInputFocused(false), 250)}
+                        placeholder="Ketik nama Anda untuk mencari (misal: Ari, Prayoga, ...)"
+                        required
+                        autoComplete="off"
+                        className="w-full bg-surface-container-low text-on-surface text-xs font-semibold rounded-2xl p-3 pr-9 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition"
+                      />
+                      {formAbsenNama ? (
+                        <button
+                          type="button"
+                          onClick={() => setFormAbsenNama('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1"
+                        >
+                          <X size={14} />
+                        </button>
+                      ) : (
+                        <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                      )}
+                    </div>
+
+                    {/* Native Datalist Fallback for Browser Autocomplete */}
+                    <datalist id="asatidz-datalist">
+                      {asatidzList.map(a => (
+                        <option key={a.id} value={a.nama}>
+                          {a.jabatan ? `${a.nama} (${a.jabatan})` : a.nama}
+                        </option>
+                      ))}
+                    </datalist>
+
+                    {/* Floating Searchable Suggestions Dropdown */}
+                    {namaInputFocused && filteredAsatidzSuggestions.length > 0 && (
+                      <div className="absolute left-4 right-4 top-[calc(100%-8px)] z-50 bg-surface-container-lowest rounded-2xl shadow-xl border border-surface-container-high overflow-hidden max-h-56 overflow-y-auto divide-y divide-surface-container-high/40 animate-fadeIn">
+                        <div className="px-3.5 py-1.5 bg-surface-container-low text-[10px] font-bold text-on-surface-variant flex justify-between items-center">
+                          <span>PILIH NAMA RESMI ({filteredAsatidzSuggestions.length})</span>
+                          <span>Klik nama untuk memilih</span>
+                        </div>
+                        {filteredAsatidzSuggestions.map(a => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onMouseDown={() => {
+                              setFormAbsenNama(a.nama);
+                              setNamaInputFocused(false);
+                            }}
+                            className="w-full px-3.5 py-2.5 text-left hover:bg-surface-container flex items-center justify-between transition group"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-7 h-7 rounded-xl bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition">
+                                {getInitials(a.nama)}
+                              </div>
+                              <div className="truncate">
+                                <span className="text-xs font-bold text-on-surface block truncate group-hover:text-primary transition">
+                                  {a.nama}
+                                </span>
+                                {a.jabatan && (
+                                  <span className="text-[10px] text-on-surface-variant block truncate">
+                                    {a.jabatan}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <Check size={14} className="text-primary opacity-0 group-hover:opacity-100 transition shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="text-[10px] text-on-surface-variant">
+                      💡 Cukup ketik beberapa huruf nama Anda, lalu klik dari rekomendasi agar nama presensi selalu seragam.
+                    </p>
                   </div>
 
                   {/* 3 Large Visual Status Buttons */}
@@ -1703,6 +1985,18 @@ export default function SalAppPage() {
                   >
                     <Calendar size={20} />
                     <span>Manajemen Acara</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab('asatidz')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition active:scale-95 ${adminTab === 'asatidz'
+                        ? 'bg-primary text-white font-bold shadow-md shadow-primary/20'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low font-medium'
+                      }`}
+                  >
+                    <UserCheck size={20} />
+                    <span>Data Asatidz</span>
                   </button>
 
                   <button
@@ -2264,7 +2558,231 @@ export default function SalAppPage() {
               )}
 
               {/* ==================================================== */}
-              {/* TAB 3: LAPORAN DIVISI                               */}
+              {/* TAB 3: DATA MASTER ASATIDZ                          */}
+              {/* ==================================================== */}
+              {adminTab === 'asatidz' && (
+                <div className="space-y-6 w-full max-w-full">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Data Master Asatidz</h2>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        Daftar nama resmi asatidz & pengajar untuk standarisasi nama pada formulir presensi.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setModalAsatidz({ open: true })}
+                        className="px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-md shadow-primary/25 flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Plus size={18} />
+                        <span>Tambah Asatidz Baru</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSyncAsatidzFromAbsensi}
+                        title="Impor nama-nama unik dari riwayat presensi yang belum terdaftar"
+                        className="px-3.5 py-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface font-bold text-xs transition border border-surface-container-high shadow-xs flex items-center gap-1.5 active:scale-95"
+                      >
+                        <Sparkles size={16} className="text-amber-500" />
+                        <span className="hidden sm:inline">Impor dari Riwayat</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={fetchAsatidzData}
+                        className="p-2.5 rounded-2xl bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-bold text-xs transition border border-surface-container-high shadow-xs"
+                        title="Segarkan Data"
+                      >
+                        <RefreshCw size={18} className={loadingAsatidz ? 'animate-spin' : ''} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Search Bar & Summary */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-surface-container-lowest p-4 rounded-3xl border border-surface-container-high shadow-xs">
+                    <div className="relative w-full sm:w-80">
+                      <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                      <input
+                        type="text"
+                        value={searchAsatidzAdmin}
+                        onChange={e => {
+                          setSearchAsatidzAdmin(e.target.value);
+                          setPageAsatidz(1);
+                        }}
+                        placeholder="Cari nama asatidz atau jabatan..."
+                        className="w-full bg-surface-container-low text-xs rounded-2xl pl-10 pr-4 py-2.5 outline-none focus:border-primary border border-transparent font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-on-surface-variant bg-surface-container-low px-3.5 py-2 rounded-2xl border border-surface-container-high">
+                        Total: <strong className="text-primary">{filteredAsatidz.length}</strong> Asatidz
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* MOBILE VIEW: Cards for Asatidz (block md:hidden) */}
+                  <div className="space-y-3 block md:hidden">
+                    {paginatedAsatidz.length === 0 ? (
+                      <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                        {loadingAsatidz ? 'Memuat data asatidz...' : 'Tidak ada data asatidz yang sesuai.'}
+                      </div>
+                    ) : (
+                      paginatedAsatidz.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          className="bg-surface-container-lowest rounded-3xl p-4 shadow-xs border border-surface-container-high flex flex-col gap-3 transition"
+                        >
+                          <div className="flex items-start justify-between gap-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                                {getInitials(item.nama)}
+                              </div>
+                              <div className="min-w-0">
+                                <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.nama}</h3>
+                                <span className="text-[10px] text-on-surface-variant font-medium mt-0.5 block truncate">
+                                  {item.jabatan || 'Asatidz Pengajar'}
+                                </span>
+                              </div>
+                            </div>
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wide ${
+                                item.status === 'Aktif' || !item.status
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-surface-container text-on-surface-variant'
+                              }`}
+                            >
+                              {item.status || 'Aktif'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-surface-container-high/40">
+                            <button
+                              type="button"
+                              onClick={() => setModalAsatidz({ open: true, item })}
+                              className="px-3 py-1.5 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-high text-xs font-bold transition flex items-center gap-1"
+                            >
+                              <Edit size={14} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAsatidz(item)}
+                              className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1"
+                            >
+                              <Trash2 size={14} />
+                              <span>Hapus</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* DESKTOP VIEW: Table for Asatidz (hidden md:block) */}
+                  <div className="hidden md:block bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-hidden">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-surface-container-low/70 border-b border-surface-container-high text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                          <th className="py-3.5 px-4 w-14 text-center">NO</th>
+                          <th className="py-3.5 px-4">NAMA LENGKAP ASATIDZ</th>
+                          <th className="py-3.5 px-4">JABATAN / PERAN</th>
+                          <th className="py-3.5 px-4 text-center w-28">STATUS</th>
+                          <th className="py-3.5 px-4 text-center w-28">AKSI</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-surface-container-high/60 font-medium">
+                        {paginatedAsatidz.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-on-surface-variant">
+                              {loadingAsatidz ? 'Memuat data asatidz...' : 'Tidak ada data asatidz.'}
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedAsatidz.map((item, idx) => (
+                            <tr key={item.id || idx} className="hover:bg-surface-container-low/50 transition">
+                              <td className="py-3.5 px-4 text-center font-mono text-on-surface-variant">
+                                {formatIndex((pageAsatidz - 1) * PAGE_SIZE + idx + 1)}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">
+                                    {getInitials(item.nama)}
+                                  </div>
+                                  <span className="font-bold text-on-surface">{item.nama}</span>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 text-on-surface-variant">
+                                {item.jabatan || 'Asatidz Pengajar'}
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                <span
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide inline-block ${
+                                    item.status === 'Aktif' || !item.status
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-surface-container text-on-surface-variant'
+                                  }`}
+                                >
+                                  {item.status || 'Aktif'}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setModalAsatidz({ open: true, item })}
+                                    className="p-2 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-high transition"
+                                    title="Edit Asatidz"
+                                  >
+                                    <Edit size={16} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAsatidz(item)}
+                                    className="p-2 rounded-xl bg-error-container text-error hover:bg-red-200 transition"
+                                    title="Hapus Asatidz"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+
+                    {/* Pagination */}
+                    {totalPagesAsatidz > 1 && (
+                      <div className="p-4 border-t border-surface-container-high flex justify-between items-center text-xs font-bold text-on-surface-variant">
+                        <span>
+                          Halaman {pageAsatidz} dari {totalPagesAsatidz}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pageAsatidz === 1}
+                            onClick={() => setPageAsatidz(prev => Math.max(1, prev - 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pageAsatidz === totalPagesAsatidz}
+                            onClick={() => setPageAsatidz(prev => Math.min(totalPagesAsatidz, prev + 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ==================================================== */}
+              {/* TAB 4: LAPORAN DIVISI                               */}
               {/* ==================================================== */}
               {adminTab === 'laporan' && (
                 <div className="space-y-6 w-full max-w-full">
@@ -2622,6 +3140,15 @@ export default function SalAppPage() {
               </button>
               <button
                 type="button"
+                onClick={() => setAdminTab('asatidz')}
+                className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${adminTab === 'asatidz' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
+                  }`}
+              >
+                <UserCheck size={20} />
+                <span className="text-[10px]">Asatidz</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setAdminTab('laporan')}
                 className={`flex-1 flex flex-col items-center justify-center py-1 transition gap-0.5 ${adminTab === 'laporan' ? 'text-primary font-bold' : 'text-on-surface-variant font-medium'
                   }`}
@@ -2788,6 +3315,163 @@ export default function SalAppPage() {
                 className="w-full py-3 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold shadow-md transition"
               >
                 Simpan Divisi
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: KELOLA ASATIDZ (TAMBAH / EDIT)                */}
+      {/* ==================================================== */}
+      {modalAsatidz.open && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-3xl shadow-2xl border border-surface-container-high w-full max-w-sm overflow-hidden animate-fadeIn">
+            <div className="bg-surface-container-low px-5 py-4 border-b border-surface-container-high flex justify-between items-center">
+              <h3 className="font-bold text-sm text-on-surface">
+                {modalAsatidz.item ? 'Edit Data Asatidz' : 'Tambah Asatidz Baru'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalAsatidz({ open: false })}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const nama = (form.elements.namedItem('nama') as HTMLInputElement).value.trim();
+                const jabatan = (form.elements.namedItem('jabatan') as HTMLInputElement).value.trim();
+                const status = (form.elements.namedItem('status') as HTMLSelectElement).value;
+
+                if (!nama) {
+                  showToast('Nama lengkap asatidz wajib diisi!', 'error');
+                  return;
+                }
+
+                setModalAsatidz({ open: false });
+                showToast('Menyimpan data asatidz...');
+
+                if (modalAsatidz.item) {
+                  const targetItem = modalAsatidz.item;
+                  const key = String(targetItem.id || targetItem.rowIndex);
+                  const updatedItem: AsatidzItem = {
+                    ...targetItem,
+                    nama,
+                    jabatan: jabatan || 'Asatidz Pengajar',
+                    status,
+                  };
+
+                  setAsatidzList(prev =>
+                    prev.map(a =>
+                      (a.id && a.id === targetItem.id) || (a.rowIndex && a.rowIndex === targetItem.rowIndex)
+                        ? updatedItem
+                        : a
+                    )
+                  );
+
+                  const editedList = getStoredList<[string, Partial<AsatidzItem>]>('salapp_edited_asatidz');
+                  const idx = editedList.findIndex(([k]) => k === key);
+                  if (idx !== -1) editedList[idx] = [key, { nama, jabatan, status }];
+                  else editedList.push([key, { nama, jabatan, status }]);
+                  saveStoredList('salapp_edited_asatidz', editedList);
+
+                  const customList = getStoredList<AsatidzItem>('salapp_custom_asatidz');
+                  const cIdx = customList.findIndex(a => String(a.id) === key || String(a.rowIndex) === key);
+                  if (cIdx !== -1) {
+                    customList[cIdx] = updatedItem;
+                    saveStoredList('salapp_custom_asatidz', customList);
+                  }
+
+                  await fetch('/api/asatidz', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: targetItem.id, rowIndex: targetItem.rowIndex, data: { nama, jabatan, status } }),
+                  });
+                } else {
+                  const newId = Date.now().toString();
+                  const newRow = Date.now();
+                  const newItem: AsatidzItem = {
+                    id: newId,
+                    rowIndex: newRow,
+                    nama,
+                    jabatan: jabatan || 'Asatidz Pengajar',
+                    status,
+                  };
+
+                  removeStoredKey('salapp_deleted_asatidz', newId);
+                  removeStoredKey('salapp_deleted_asatidz', String(newRow));
+                  removeStoredKey('salapp_deleted_asatidz', nama.toLowerCase());
+
+                  setAsatidzList(prev => {
+                    const filtered = prev.filter(
+                      a => String(a.id) !== newId && a.nama.trim().toLowerCase() !== nama.toLowerCase()
+                    );
+                    return [newItem, ...filtered];
+                  });
+
+                  const customList = getStoredList<AsatidzItem>('salapp_custom_asatidz').filter(
+                    a => String(a.id) !== newId && a.nama.trim().toLowerCase() !== nama.toLowerCase()
+                  );
+                  customList.unshift(newItem);
+                  saveStoredList('salapp_custom_asatidz', customList);
+
+                  await fetch('/api/asatidz', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newItem),
+                  });
+                }
+
+                showToast('Data asatidz berhasil disimpan!');
+                fetchAsatidzData();
+              }}
+              className="p-5 space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">
+                  Nama Lengkap Asatidz / Pengajar <span className="text-error">*</span>
+                </label>
+                <input
+                  name="nama"
+                  defaultValue={modalAsatidz.item?.nama || ''}
+                  required
+                  placeholder="Contoh: Ari Surahman"
+                  className="w-full border border-surface-container-high rounded-xl p-3 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Jabatan / Amanah / Peran</label>
+                <input
+                  name="jabatan"
+                  defaultValue={modalAsatidz.item?.jabatan || 'Asatidz Pengajar'}
+                  placeholder="Contoh: Asatidz Pengajar, Pembina, Koordinator"
+                  className="w-full border border-surface-container-high rounded-xl p-3 text-xs outline-none focus:border-primary bg-surface-container-low"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface mb-1">Status Keaktifan</label>
+                <select
+                  name="status"
+                  defaultValue={modalAsatidz.item?.status || 'Aktif'}
+                  className="w-full border border-surface-container-high rounded-xl p-3 text-xs outline-none focus:border-primary bg-surface-container-low"
+                >
+                  <option value="Aktif">Aktif</option>
+                  <option value="Non-Aktif">Non-Aktif</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-primary hover:bg-primary-container text-white font-bold p-3 rounded-xl text-xs transition shadow-md shadow-primary/20 active:scale-95"
+              >
+                {modalAsatidz.item ? 'Simpan Perubahan' : 'Tambah Asatidz'}
               </button>
             </form>
           </div>
