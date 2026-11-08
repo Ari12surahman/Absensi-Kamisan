@@ -107,10 +107,10 @@ export default function SalAppPage() {
     setSelectedLaporanKeys([]);
   }, [adminTab]);
 
-  const getAbsensiKey = (item: AbsensiRecord) => String(item.id || item.rowIndex || `${item.nama}_${item.waktu}`);
-  const getAsatidzKey = (item: AsatidzItem) => String(item.id || item.rowIndex || item.nama);
-  const getAcaraKey = (item: AcaraItem) => String(item.id || item.rowIndex || item.namaAcara);
-  const getLaporanKey = (item: LaporanItem) => String(item.id || item.rowIndex || `${item.namaPelapor}_${item.waktu}`);
+  const getAbsensiKey = (item: AbsensiRecord) => String(item?.id || item?.rowIndex || `${item?.nama || ''}_${item?.waktu || ''}`);
+  const getAsatidzKey = (item: AsatidzItem) => String(item?.id || item?.rowIndex || item?.nama || '');
+  const getAcaraKey = (item: AcaraItem) => String(item?.id || item?.rowIndex || item?.namaAcara || '');
+  const getLaporanKey = (item: LaporanItem) => String(item?.id || item?.rowIndex || `${item?.namaPelapor || ''}_${item?.waktu || ''}`);
 
   // Form Presensi State
   const [formAbsenAcara, setFormAbsenAcara] = useState('');
@@ -377,35 +377,63 @@ export default function SalAppPage() {
   const getStoredList = <T,>(key: string): T[] => {
     if (typeof window === 'undefined') return [];
     try {
-      return JSON.parse(localStorage.getItem(key) || '[]');
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
   };
 
+  const getStoredMap = <V,>(key: string): Map<string, V> => {
+    const map = new Map<string, V>();
+    if (typeof window === 'undefined') return map;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return map;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const entry of parsed) {
+          if (Array.isArray(entry) && entry.length >= 2 && entry[0] != null) {
+            map.set(String(entry[0]), entry[1]);
+          }
+        }
+      } else if (parsed && typeof parsed === 'object') {
+        for (const [k, v] of Object.entries(parsed)) {
+          if (k != null) map.set(String(k), v as V);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed parsing stored map for key:', key, e);
+    }
+    return map;
+  };
+
   const saveStoredList = <T,>(key: string, list: T[]) => {
     if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem(key, JSON.stringify(list));
+      localStorage.setItem(key, JSON.stringify(Array.isArray(list) ? list : []));
     } catch { }
   };
 
   const addStoredKey = (storageKey: string, idOrKey: string) => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !idOrKey) return;
     try {
       const list = getStoredList<string>(storageKey);
-      if (!list.includes(idOrKey)) {
-        list.push(idOrKey);
+      if (!list.includes(String(idOrKey))) {
+        list.push(String(idOrKey));
         saveStoredList(storageKey, list);
       }
     } catch { }
   };
 
   const removeStoredKey = (storageKey: string, idOrKey: string) => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !idOrKey) return;
     try {
       const list = getStoredList<string>(storageKey);
-      const filtered = list.filter(k => k !== idOrKey && k.toLowerCase() !== idOrKey.toLowerCase());
+      const str = String(idOrKey);
+      const filtered = list.filter(k => k && String(k) !== str && String(k).toLowerCase() !== str.toLowerCase());
       saveStoredList(storageKey, filtered);
     } catch { }
   };
@@ -417,7 +445,7 @@ export default function SalAppPage() {
       try {
         const list = getStoredList<string>(storageKey);
         // Only keep numeric strings or structured entity IDs (e.g. "17308...", "2", "ASATIDZ-...")
-        const cleaned = list.filter(k => /^\d+$/.test(k) || /^[A-Z0-9]+-\d+$/i.test(k));
+        const cleaned = list.filter(k => k != null && (/^\d+$/.test(String(k)) || /^[A-Z0-9]+-\d+$/i.test(String(k))));
         saveStoredList(storageKey, cleaned);
       } catch { }
     };
@@ -436,31 +464,32 @@ export default function SalAppPage() {
       if (json.success) {
         const deletedKeys = getStoredList<string>('salapp_deleted_absensi');
         const customAdded = getStoredList<AbsensiRecord>('salapp_custom_absensi');
-        const editedMap = new Map<string, Partial<AbsensiRecord>>(
-          getStoredList<[string, Partial<AbsensiRecord>]>('salapp_edited_absensi')
-        );
+        const editedMap = getStoredMap<Partial<AbsensiRecord>>('salapp_edited_absensi');
 
         const isDeleted = (id?: string | number, rowIndex?: string | number) =>
-          (id && deletedKeys.includes(String(id))) ||
-          (rowIndex && deletedKeys.includes(String(rowIndex)));
+          (id != null && deletedKeys.includes(String(id))) ||
+          (rowIndex != null && deletedKeys.includes(String(rowIndex)));
 
         const activeCustom = customAdded
-          .filter(r => !isDeleted(r.id, r.rowIndex))
+          .filter(r => r && !isDeleted(r.id, r.rowIndex))
           .map(r => {
-            const edit = editedMap.get(String(r.id)) || editedMap.get(String(r.rowIndex));
+            const edit = (r.id != null ? editedMap.get(String(r.id)) : undefined) ||
+              (r.rowIndex != null ? editedMap.get(String(r.rowIndex)) : undefined);
             return edit ? { ...r, ...edit } : r;
           });
 
         const serverMerged = (json.data || [])
-          .filter((r: AbsensiRecord) => !isDeleted(r.id, r.rowIndex))
+          .filter((r: AbsensiRecord) => r && !isDeleted(r.id, r.rowIndex))
           .map((r: AbsensiRecord) => {
-            const edit = editedMap.get(String(r.id)) || editedMap.get(String(r.rowIndex));
+            const edit = (r.id != null ? editedMap.get(String(r.id)) : undefined) ||
+              (r.rowIndex != null ? editedMap.get(String(r.rowIndex)) : undefined);
             return edit ? { ...r, ...edit } : r;
           });
 
         // Clean up salapp_custom_absensi if records are already confirmed in serverMerged
         const serverKeys = new Set<string>();
         for (const s of serverMerged) {
+          if (!s) continue;
           if (s.id) serverKeys.add(String(s.id));
           if (s.rowIndex) serverKeys.add(String(s.rowIndex));
           const sDate = (s.waktu || '').split(' ')[0].trim();
@@ -470,7 +499,7 @@ export default function SalAppPage() {
         }
 
         const remainingCustom = customAdded.filter(r => {
-          if (isDeleted(r.id, r.rowIndex)) return false;
+          if (!r || isDeleted(r.id, r.rowIndex)) return false;
           const rDate = (r.waktu || '').split(' ')[0].trim();
           const rKey = `${(r.acara || '').trim()}_${(r.nama || '').trim()}_${rDate}`.toLowerCase();
           if (
@@ -492,7 +521,8 @@ export default function SalAppPage() {
 
         // Authoritative server data first, then any pending local custom records
         for (const item of [...serverMerged, ...activeCustom]) {
-          const idKey = String(item.id || item.rowIndex);
+          if (!item) continue;
+          const idKey = String(item.id || item.rowIndex || Math.random());
           const datePart = (item.waktu || '').split(' ')[0].trim();
           const personAcaraKey = `${(item.acara || '').trim()}_${(item.nama || '').trim()}_${datePart}`.toLowerCase();
 
@@ -520,30 +550,28 @@ export default function SalAppPage() {
       if (json.success) {
         const deletedKeys = getStoredList<string>('salapp_deleted_acara');
         const customAdded = getStoredList<AcaraItem>('salapp_custom_acara');
-        const editedMap = new Map<string, Partial<AcaraItem>>(
-          getStoredList<[string, Partial<AcaraItem>]>('salapp_edited_acara')
-        );
+        const editedMap = getStoredMap<Partial<AcaraItem>>('salapp_edited_acara');
 
         const isDeleted = (id?: string | number, rowIndex?: string | number) =>
-          (id && deletedKeys.includes(String(id))) ||
-          (rowIndex && deletedKeys.includes(String(rowIndex)));
+          (id != null && deletedKeys.includes(String(id))) ||
+          (rowIndex != null && deletedKeys.includes(String(rowIndex)));
 
         const activeCustom = customAdded
-          .filter(a => !isDeleted(a.id, a.rowIndex))
+          .filter(a => a && !isDeleted(a.id, a.rowIndex))
           .map(a => {
             const edit =
-              editedMap.get(String(a.id)) ||
-              editedMap.get(String(a.rowIndex)) ||
+              (a.id != null ? editedMap.get(String(a.id)) : undefined) ||
+              (a.rowIndex != null ? editedMap.get(String(a.rowIndex)) : undefined) ||
               (a.namaAcara ? editedMap.get(a.namaAcara.trim().toLowerCase()) : undefined);
             return edit ? { ...a, ...edit } : a;
           });
 
         const serverMerged = (json.data || [])
-          .filter((a: AcaraItem) => !isDeleted(a.id, a.rowIndex))
+          .filter((a: AcaraItem) => a && !isDeleted(a.id, a.rowIndex))
           .map((a: AcaraItem) => {
             const edit =
-              editedMap.get(String(a.id)) ||
-              editedMap.get(String(a.rowIndex)) ||
+              (a.id != null ? editedMap.get(String(a.id)) : undefined) ||
+              (a.rowIndex != null ? editedMap.get(String(a.rowIndex)) : undefined) ||
               (a.namaAcara ? editedMap.get(a.namaAcara.trim().toLowerCase()) : undefined);
             return edit ? { ...a, ...edit } : a;
           });
@@ -552,7 +580,8 @@ export default function SalAppPage() {
         const finalAcaraList: AcaraItem[] = [];
 
         for (const item of [...activeCustom, ...serverMerged]) {
-          const idKey = String(item.id || item.rowIndex);
+          if (!item) continue;
+          const idKey = String(item.id || item.rowIndex || Math.random());
           const nameKey = (item.namaAcara || '').trim().toLowerCase();
           if (!seen.has(idKey) && (!nameKey || !seen.has('name_' + nameKey))) {
             seen.add(idKey);
@@ -578,30 +607,28 @@ export default function SalAppPage() {
       if (json.success) {
         const deletedKeys = getStoredList<string>('salapp_deleted_divisi');
         const customAdded = getStoredList<DivisiItem>('salapp_custom_divisi');
-        const editedMap = new Map<string, Partial<DivisiItem>>(
-          getStoredList<[string, Partial<DivisiItem>]>('salapp_edited_divisi')
-        );
+        const editedMap = getStoredMap<Partial<DivisiItem>>('salapp_edited_divisi');
 
         const isDeleted = (id?: string | number, rowIndex?: string | number) =>
-          (id && deletedKeys.includes(String(id))) ||
-          (rowIndex && deletedKeys.includes(String(rowIndex)));
+          (id != null && deletedKeys.includes(String(id))) ||
+          (rowIndex != null && deletedKeys.includes(String(rowIndex)));
 
         const activeCustom = customAdded
-          .filter(d => !isDeleted(d.id, d.rowIndex))
+          .filter(d => d && !isDeleted(d.id, d.rowIndex))
           .map(d => {
             const edit =
-              editedMap.get(String(d.id)) ||
-              editedMap.get(String(d.rowIndex)) ||
+              (d.id != null ? editedMap.get(String(d.id)) : undefined) ||
+              (d.rowIndex != null ? editedMap.get(String(d.rowIndex)) : undefined) ||
               (d.namaDivisi ? editedMap.get(d.namaDivisi.trim().toLowerCase()) : undefined);
             return edit ? { ...d, ...edit } : d;
           });
 
         const serverMerged = (json.data || [])
-          .filter((d: DivisiItem) => !isDeleted(d.id, d.rowIndex))
+          .filter((d: DivisiItem) => d && !isDeleted(d.id, d.rowIndex))
           .map((d: DivisiItem) => {
             const edit =
-              editedMap.get(String(d.id)) ||
-              editedMap.get(String(d.rowIndex)) ||
+              (d.id != null ? editedMap.get(String(d.id)) : undefined) ||
+              (d.rowIndex != null ? editedMap.get(String(d.rowIndex)) : undefined) ||
               (d.namaDivisi ? editedMap.get(d.namaDivisi.trim().toLowerCase()) : undefined);
             return edit ? { ...d, ...edit } : d;
           });
@@ -610,7 +637,8 @@ export default function SalAppPage() {
         const finalDivisiList: DivisiItem[] = [];
 
         for (const item of [...activeCustom, ...serverMerged]) {
-          const idKey = String(item.id || item.rowIndex);
+          if (!item) continue;
+          const idKey = String(item.id || item.rowIndex || Math.random());
           const nameKey = (item.namaDivisi || '').trim().toLowerCase();
           if (!seen.has(idKey) && (!nameKey || !seen.has('name_' + nameKey))) {
             seen.add(idKey);
@@ -636,31 +664,29 @@ export default function SalAppPage() {
       if (json.success) {
         const deletedKeys = getStoredList<string>('salapp_deleted_asatidz');
         const customAdded = getStoredList<AsatidzItem>('salapp_custom_asatidz');
-        const editedMap = new Map<string, Partial<AsatidzItem>>(
-          getStoredList<[string, Partial<AsatidzItem>]>('salapp_edited_asatidz')
-        );
+        const editedMap = getStoredMap<Partial<AsatidzItem>>('salapp_edited_asatidz');
 
         const isDeleted = (id?: string | number, rowIndex?: string | number, nama?: string) =>
-          (id && deletedKeys.includes(String(id))) ||
-          (rowIndex && deletedKeys.includes(String(rowIndex))) ||
-          (nama && deletedKeys.includes(nama.trim().toLowerCase()));
+          (id != null && deletedKeys.includes(String(id))) ||
+          (rowIndex != null && deletedKeys.includes(String(rowIndex))) ||
+          (nama != null && deletedKeys.includes(nama.trim().toLowerCase()));
 
         const activeCustom = customAdded
-          .filter(a => !isDeleted(a.id, a.rowIndex, a.nama))
+          .filter(a => a && !isDeleted(a.id, a.rowIndex, a.nama))
           .map(a => {
             const edit =
-              editedMap.get(String(a.id)) ||
-              editedMap.get(String(a.rowIndex)) ||
+              (a.id != null ? editedMap.get(String(a.id)) : undefined) ||
+              (a.rowIndex != null ? editedMap.get(String(a.rowIndex)) : undefined) ||
               (a.nama ? editedMap.get(a.nama.trim().toLowerCase()) : undefined);
             return edit ? { ...a, ...edit } : a;
           });
 
         const serverMerged = (json.data || [])
-          .filter((a: AsatidzItem) => !isDeleted(a.id, a.rowIndex, a.nama))
+          .filter((a: AsatidzItem) => a && !isDeleted(a.id, a.rowIndex, a.nama))
           .map((a: AsatidzItem) => {
             const edit =
-              editedMap.get(String(a.id)) ||
-              editedMap.get(String(a.rowIndex)) ||
+              (a.id != null ? editedMap.get(String(a.id)) : undefined) ||
+              (a.rowIndex != null ? editedMap.get(String(a.rowIndex)) : undefined) ||
               (a.nama ? editedMap.get(a.nama.trim().toLowerCase()) : undefined);
             return edit ? { ...a, ...edit } : a;
           });
@@ -669,7 +695,8 @@ export default function SalAppPage() {
         const finalAsatidzList: AsatidzItem[] = [];
 
         for (const item of [...activeCustom, ...serverMerged]) {
-          const keyId = String(item.id || item.rowIndex);
+          if (!item) continue;
+          const keyId = String(item.id || item.rowIndex || Math.random());
           const keyName = (item.nama || '').trim().toLowerCase();
           if (!seen.has(keyId) && (!keyName || !seen.has('name_' + keyName))) {
             seen.add(keyId);
@@ -695,25 +722,25 @@ export default function SalAppPage() {
       if (json.success) {
         const deletedKeys = getStoredList<string>('salapp_deleted_laporan');
         const customAdded = getStoredList<LaporanItem>('salapp_custom_laporan');
-        const editedMap = new Map<string, Partial<LaporanItem>>(
-          getStoredList<[string, Partial<LaporanItem>]>('salapp_edited_laporan')
-        );
+        const editedMap = getStoredMap<Partial<LaporanItem>>('salapp_edited_laporan');
 
         const isDeleted = (id?: string | number, rowIndex?: string | number) =>
-          (id && deletedKeys.includes(String(id))) ||
-          (rowIndex && deletedKeys.includes(String(rowIndex)));
+          (id != null && deletedKeys.includes(String(id))) ||
+          (rowIndex != null && deletedKeys.includes(String(rowIndex)));
 
         const activeCustom = customAdded
-          .filter(l => !isDeleted(l.id, l.rowIndex))
+          .filter(l => l && !isDeleted(l.id, l.rowIndex))
           .map(l => {
-            const edit = editedMap.get(String(l.id)) || editedMap.get(String(l.rowIndex));
+            const edit = (l.id != null ? editedMap.get(String(l.id)) : undefined) ||
+              (l.rowIndex != null ? editedMap.get(String(l.rowIndex)) : undefined);
             return edit ? { ...l, ...edit } : l;
           });
 
         const serverMerged = (json.data || [])
-          .filter((l: LaporanItem) => !isDeleted(l.id, l.rowIndex))
+          .filter((l: LaporanItem) => l && !isDeleted(l.id, l.rowIndex))
           .map((l: LaporanItem) => {
-            const edit = editedMap.get(String(l.id)) || editedMap.get(String(l.rowIndex));
+            const edit = (l.id != null ? editedMap.get(String(l.id)) : undefined) ||
+              (l.rowIndex != null ? editedMap.get(String(l.rowIndex)) : undefined);
             return edit ? { ...l, ...edit } : l;
           });
 
@@ -721,8 +748,9 @@ export default function SalAppPage() {
         const finalLaporanList: LaporanItem[] = [];
 
         for (const item of [...activeCustom, ...serverMerged]) {
-          const idKey = String(item.id || item.rowIndex);
-          const contentKey = `${item.divisi}_${item.namaPelapor}_${item.periode}`.toLowerCase();
+          if (!item) continue;
+          const idKey = String(item.id || item.rowIndex || Math.random());
+          const contentKey = `${item.divisi || ''}_${item.namaPelapor || ''}_${item.periode || ''}`.toLowerCase();
           if (!seen.has(idKey) && !seen.has(contentKey)) {
             seen.add(idKey);
             seen.add(contentKey);
@@ -1356,30 +1384,32 @@ export default function SalAppPage() {
 
   // Filtered Lists for Admin
   const filteredAbsensi = useMemo(() => {
-    return absensiList.filter(item => {
+    return (absensiList || []).filter(item => {
+      if (!item) return false;
       const matchAcara = !filterAcaraAdmin || item.acara === filterAcaraAdmin;
       const matchSearch =
         !searchAbsensiAdmin ||
-        item.nama?.toLowerCase().includes(searchAbsensiAdmin.toLowerCase()) ||
-        item.keterangan?.toLowerCase().includes(searchAbsensiAdmin.toLowerCase());
+        (item.nama && item.nama.toLowerCase().includes(searchAbsensiAdmin.toLowerCase())) ||
+        (item.keterangan && item.keterangan.toLowerCase().includes(searchAbsensiAdmin.toLowerCase()));
       return matchAcara && matchSearch;
     });
   }, [absensiList, filterAcaraAdmin, searchAbsensiAdmin]);
 
   const filteredLaporan = useMemo(() => {
-    return laporanList.filter(item => {
+    return (laporanList || []).filter(item => {
+      if (!item) return false;
       const matchDivisi = !filterDivisiAdmin || item.divisi === filterDivisiAdmin;
       const matchSearch =
         !searchLaporanAdmin ||
-        item.namaPelapor?.toLowerCase().includes(searchLaporanAdmin.toLowerCase()) ||
-        item.hasilUsaha?.toLowerCase().includes(searchLaporanAdmin.toLowerCase()) ||
-        item.evaluasi?.toLowerCase().includes(searchLaporanAdmin.toLowerCase());
+        (item.namaPelapor && item.namaPelapor.toLowerCase().includes(searchLaporanAdmin.toLowerCase())) ||
+        (item.hasilUsaha && item.hasilUsaha.toLowerCase().includes(searchLaporanAdmin.toLowerCase())) ||
+        (item.evaluasi && item.evaluasi.toLowerCase().includes(searchLaporanAdmin.toLowerCase()));
       return matchDivisi && matchSearch;
     });
   }, [laporanList, filterDivisiAdmin, searchLaporanAdmin]);
 
   const filteredAsatidz = useMemo(() => {
-    let list = asatidzList || [];
+    let list = (asatidzList || []).filter(Boolean);
     if (searchAsatidzAdmin.trim()) {
       const q = searchAsatidzAdmin.toLowerCase();
       list = list.filter(
@@ -1397,36 +1427,36 @@ export default function SalAppPage() {
   // Paginated Items
   const paginatedAbsensi = useMemo(() => {
     const start = (pageAbsensi - 1) * PAGE_SIZE;
-    return filteredAbsensi.slice(start, start + PAGE_SIZE);
+    return (filteredAbsensi || []).slice(start, start + PAGE_SIZE);
   }, [filteredAbsensi, pageAbsensi]);
 
   const paginatedAcara = useMemo(() => {
     const start = (pageAcara - 1) * PAGE_SIZE;
-    return acaraList.slice(start, start + PAGE_SIZE);
+    return (acaraList || []).filter(Boolean).slice(start, start + PAGE_SIZE);
   }, [acaraList, pageAcara]);
 
   const paginatedAsatidz = useMemo(() => {
     const start = (pageAsatidz - 1) * PAGE_SIZE;
-    return filteredAsatidz.slice(start, start + PAGE_SIZE);
+    return (filteredAsatidz || []).slice(start, start + PAGE_SIZE);
   }, [filteredAsatidz, pageAsatidz]);
 
   const paginatedLaporan = useMemo(() => {
     const start = (pageLaporan - 1) * PAGE_SIZE;
-    return filteredLaporan.slice(start, start + PAGE_SIZE);
+    return (filteredLaporan || []).slice(start, start + PAGE_SIZE);
   }, [filteredLaporan, pageLaporan]);
 
   const paginatedDivisi = useMemo(() => {
     const start = (pageDivisi - 1) * PAGE_SIZE;
-    return divisiList.slice(start, start + PAGE_SIZE);
+    return (divisiList || []).filter(Boolean).slice(start, start + PAGE_SIZE);
   }, [divisiList, pageDivisi]);
 
   // Format ID Helper
   const formatIndex = (idx: number) => String(idx).padStart(2, '0');
 
   // KPI Computations
-  const totalHadirCount = absensiList.filter(a => a.status?.toLowerCase() === 'hadir').length;
-  const onTimePercentage = absensiList.length > 0 ? Math.round((totalHadirCount / absensiList.length) * 100) : 100;
-  const izinSakitCount = absensiList.filter(a => ['izin', 'sakit'].includes(a.status?.toLowerCase())).length;
+  const totalHadirCount = (absensiList || []).filter(a => a && a.status?.toLowerCase() === 'hadir').length;
+  const onTimePercentage = (absensiList || []).length > 0 ? Math.round((totalHadirCount / absensiList.length) * 100) : 100;
+  const izinSakitCount = (absensiList || []).filter(a => a && a.status && ['izin', 'sakit'].includes(a.status.toLowerCase())).length;
 
   return (
     <div className="min-h-screen bg-background text-on-surface flex flex-col relative selection:bg-primary selection:text-white w-full max-w-full overflow-x-hidden">
