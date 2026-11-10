@@ -158,23 +158,6 @@ export default function SalAppPage() {
     }
   };
 
-  // Keyboard Navigation for Smart TV Presentation Mode (Left / Right / Space / Esc)
-  useEffect(() => {
-    if (!tvPresentationOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
-        e.preventDefault();
-        setTvSlideIndex(prev => (prev < filteredLaporan.length - 1 ? prev + 1 : 0));
-      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        e.preventDefault();
-        setTvSlideIndex(prev => (prev > 0 ? prev - 1 : filteredLaporan.length - 1));
-      } else if (e.key === 'Escape') {
-        setTvPresentationOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [tvPresentationOpen, filteredLaporan.length]);
 
   // Form Presensi State
   const [formAbsenAcara, setFormAbsenAcara] = useState('');
@@ -1593,6 +1576,26 @@ export default function SalAppPage() {
       return matchDivisi && matchSearch;
     });
   }, [laporanList, filterDivisiAdmin, searchLaporanAdmin]);
+
+  // Keyboard & Remote Navigation for Smart TV Presentation Mode (Left / Right / Space / Esc)
+  useEffect(() => {
+    if (!tvPresentationOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const len = filteredLaporan?.length || 0;
+      if (len === 0) return;
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        setTvSlideIndex(prev => (prev < len - 1 ? prev + 1 : 0));
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        setTvSlideIndex(prev => (prev > 0 ? prev - 1 : len - 1));
+      } else if (e.key === 'Escape') {
+        setTvPresentationOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tvPresentationOpen, filteredLaporan]);
 
   const filteredAsatidz = useMemo(() => {
     let list = (asatidzList || []).filter(Boolean);
