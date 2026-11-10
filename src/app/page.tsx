@@ -122,6 +122,9 @@ export default function SalAppPage() {
   const [tvPresentationOpen, setTvPresentationOpen] = useState(false);
   const [tvSlideIndex, setTvSlideIndex] = useState(0);
   const [tvIsFullscreen, setTvIsFullscreen] = useState(false);
+  const [tvSectionFilter, setTvSectionFilter] = useState<'all' | 'hasil' | 'proker' | 'evaluasi' | 'dana'>('all');
+  const [tvDivisiFilter, setTvDivisiFilter] = useState<string>('');
+  const [tvPeriodeFilter, setTvPeriodeFilter] = useState<string>('');
 
   // Helper to parse budget info for Smart TV & Executive cards
   const parseLaporanDanaDetails = (danaStr?: string) => {
@@ -1577,11 +1580,36 @@ export default function SalAppPage() {
     });
   }, [laporanList, filterDivisiAdmin, searchLaporanAdmin]);
 
+  const tvAvailableDivisi = useMemo(() => {
+    const set = new Set<string>();
+    (laporanList || []).forEach(item => {
+      if (item?.divisi) set.add(item.divisi);
+    });
+    return Array.from(set);
+  }, [laporanList]);
+
+  const tvAvailablePeriode = useMemo(() => {
+    const set = new Set<string>();
+    (laporanList || []).forEach(item => {
+      if (item?.periode) set.add(item.periode);
+    });
+    return Array.from(set);
+  }, [laporanList]);
+
+  const tvFilteredLaporan = useMemo(() => {
+    return (laporanList || []).filter(item => {
+      if (!item) return false;
+      const matchDivisi = !tvDivisiFilter || item.divisi === tvDivisiFilter;
+      const matchPeriode = !tvPeriodeFilter || item.periode === tvPeriodeFilter;
+      return matchDivisi && matchPeriode;
+    });
+  }, [laporanList, tvDivisiFilter, tvPeriodeFilter]);
+
   // Keyboard & Remote Navigation for Smart TV Presentation Mode (Left / Right / Space / Esc)
   useEffect(() => {
     if (!tvPresentationOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      const len = filteredLaporan?.length || 0;
+      const len = tvFilteredLaporan?.length || 0;
       if (len === 0) return;
       if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
         e.preventDefault();
@@ -1595,7 +1623,7 @@ export default function SalAppPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [tvPresentationOpen, filteredLaporan]);
+  }, [tvPresentationOpen, tvFilteredLaporan]);
 
   const filteredAsatidz = useMemo(() => {
     let list = (asatidzList || []).filter(Boolean);
@@ -3663,10 +3691,13 @@ export default function SalAppPage() {
                       <button
                         type="button"
                         onClick={() => {
+                          setTvDivisiFilter(filterDivisiAdmin || '');
+                          setTvPeriodeFilter('');
+                          setTvSectionFilter('all');
                           setTvSlideIndex(0);
                           setTvPresentationOpen(true);
                         }}
-                        className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-primary hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs transition shadow-lg shadow-purple-600/25 flex items-center gap-2 active:scale-95 cursor-pointer"
+                        className="px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-xs flex items-center gap-2 active:scale-95 cursor-pointer"
                         title="Buka tampilan layar penuh untuk dipresentasikan di Smart TV"
                       >
                         <Tv size={17} />
@@ -4941,37 +4972,22 @@ export default function SalAppPage() {
       {/* MODAL / OVERLAY: SMART TV PRESENTATION MODE          */}
       {/* ==================================================== */}
       {tvPresentationOpen && (
-        <div className="fixed inset-0 bg-slate-950 text-white z-[95] flex flex-col overflow-hidden select-none animate-fadeIn">
-          {/* Top Bar: TV Header & Quick Controls */}
-          <div className="bg-slate-900/90 border-b border-slate-800 px-6 py-3 flex items-center justify-between shrink-0">
+        <div className="fixed inset-0 bg-surface-container-low text-on-surface z-[95] flex flex-col overflow-hidden select-none animate-fadeIn">
+          {/* Top Bar: TV Header & Exit Controls */}
+          <div className="bg-surface-container-lowest border-b border-surface-container-high px-6 py-3.5 flex items-center justify-between shrink-0 shadow-xs">
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 font-extrabold text-xs uppercase tracking-wider flex items-center gap-2">
-                <Tv size={15} className="animate-pulse text-purple-400" />
-                <span>MODE SMART TV</span>
-              </span>
-              <div className="hidden md:flex items-center gap-2 text-xs text-slate-400">
-                <span className="font-bold text-slate-200">SalApp Asatidz</span>
-                <span>•</span>
-                <span>Forum Musyawarah &amp; Evaluasi Divisi</span>
+              <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                <Tv size={18} />
               </div>
-            </div>
-
-            {/* Quick Division Jump Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto max-w-xl py-1 scrollbar-none px-2">
-              {filteredLaporan.map((item, idx) => (
-                <button
-                  key={`tv-jump-${item.id || idx}`}
-                  type="button"
-                  onClick={() => setTvSlideIndex(idx)}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                    tvSlideIndex === idx
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400'
-                      : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
-                  }`}
-                >
-                  {item.divisi}
-                </button>
-              ))}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2.5">
+                <span className="font-extrabold text-sm sm:text-base text-on-surface leading-tight">
+                  SalApp Asatidz • Mode Presentasi Smart TV
+                </span>
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary/10 text-primary border border-primary/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                  Forum Laporan
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -4979,232 +4995,552 @@ export default function SalAppPage() {
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-bold transition flex items-center gap-1.5 border border-surface-container-high cursor-pointer shadow-xs"
                 title="Layar Penuh (F11)"
               >
                 {tvIsFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-                <span className="hidden sm:inline">{tvIsFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+                <span className="hidden sm:inline">{tvIsFullscreen ? 'Keluar Fullscreen' : 'Layar Penuh (F11)'}</span>
               </button>
 
               {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setTvPresentationOpen(false)}
-                className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-bold transition flex items-center gap-1 border border-rose-500/40 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-red-50 hover:text-red-600 text-on-surface text-xs font-bold transition flex items-center gap-1.5 border border-surface-container-high hover:border-red-200 cursor-pointer shadow-xs"
                 title="Tutup Mode Presentasi (ESC)"
               >
                 <X size={15} />
-                <span>ESC</span>
+                <span>Tutup (ESC)</span>
               </button>
             </div>
           </div>
 
-          {/* Slide Content */}
-          {filteredLaporan.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-              <div className="w-20 h-20 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mb-4">
-                <FileText size={40} />
+          {/* Interactive Filter & Section Switcher Bar */}
+          <div className="bg-surface-container-lowest border-b border-surface-container-high px-6 py-2.5 shrink-0 shadow-xs space-y-2">
+            {/* Filter Bagian (Fokus Tampilan Setiap Bagian) */}
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
+              <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider shrink-0 mr-1">
+                Fokus Bagian:
+              </span>
+              <button
+                type="button"
+                onClick={() => setTvSectionFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  tvSectionFilter === 'all'
+                    ? 'bg-primary text-white shadow-xs'
+                    : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high'
+                }`}
+              >
+                <LayoutGrid size={13} />
+                <span>Semua Bagian (4 Kuadran)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTvSectionFilter('hasil')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  tvSectionFilter === 'hasil'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-surface-container-low hover:bg-emerald-50 hover:text-emerald-700 text-on-surface-variant border border-surface-container-high'
+                }`}
+              >
+                <CheckCircle size={13} />
+                <span>1. Capaian Selesai</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTvSectionFilter('proker')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  tvSectionFilter === 'proker'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-surface-container-low hover:bg-indigo-50 hover:text-indigo-700 text-on-surface-variant border border-surface-container-high'
+                }`}
+              >
+                <Sparkles size={13} />
+                <span>2. Rencana Proker</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTvSectionFilter('evaluasi')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  tvSectionFilter === 'evaluasi'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-surface-container-low hover:bg-amber-50 hover:text-amber-700 text-on-surface-variant border border-surface-container-high'
+                }`}
+              >
+                <AlertTriangle size={13} />
+                <span>3. Evaluasi &amp; Kendala</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTvSectionFilter('dana')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  tvSectionFilter === 'dana'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-surface-container-low hover:bg-purple-50 hover:text-purple-700 text-on-surface-variant border border-surface-container-high'
+                }`}
+              >
+                <DollarSign size={13} />
+                <span>4. Anggaran &amp; Kas</span>
+              </button>
+            </div>
+
+            {/* Filter Divisi & Periode Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-surface-container-high/60">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider shrink-0 mr-1">
+                  Pilih Divisi:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTvDivisiFilter('');
+                    setTvSlideIndex(0);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                    !tvDivisiFilter
+                      ? 'bg-primary text-white shadow-xs'
+                      : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface border border-surface-container-high'
+                  }`}
+                >
+                  Semua Divisi ({laporanList.length})
+                </button>
+                {tvAvailableDivisi.map(div => {
+                  const count = (laporanList || []).filter(l => l.divisi === div).length;
+                  return (
+                    <button
+                      key={`tv-div-${div}`}
+                      type="button"
+                      onClick={() => {
+                        setTvDivisiFilter(div);
+                        setTvSlideIndex(0);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                        tvDivisiFilter === div
+                          ? 'bg-primary text-white shadow-xs'
+                          : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface border border-surface-container-high'
+                      }`}
+                    >
+                      {div} ({count})
+                    </button>
+                  );
+                })}
               </div>
-              <h3 className="text-2xl font-bold text-slate-200">Belum Ada Laporan Divisi</h3>
-              <p className="text-sm text-slate-400 mt-2 max-w-md">
-                Tidak ada laporan masuk yang cocok dengan filter atau pencarian saat ini.
+
+              {/* Periode Filter if available */}
+              {tvAvailablePeriode.length > 1 && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                    Periode:
+                  </span>
+                  <select
+                    value={tvPeriodeFilter}
+                    onChange={e => {
+                      setTvPeriodeFilter(e.target.value);
+                      setTvSlideIndex(0);
+                    }}
+                    className="bg-surface-container-low text-on-surface text-xs font-bold rounded-lg px-2.5 py-1 border border-surface-container-high focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Semua Periode</option>
+                    {tvAvailablePeriode.map(p => (
+                      <option key={`tv-per-${p}`} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Slide Content Body */}
+          {tvFilteredLaporan.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-surface-container border border-surface-container-high flex items-center justify-center text-on-surface-variant mb-3">
+                <FileText size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-on-surface">Tidak Ada Laporan yang Cocok</h3>
+              <p className="text-xs text-on-surface-variant mt-1.5 max-w-sm">
+                Belum ada data laporan divisi yang sesuai dengan filter divisi atau periode yang dipilih.
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setTvDivisiFilter('');
+                  setTvPeriodeFilter('');
+                  setTvSlideIndex(0);
+                }}
+                className="mt-4 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-xs hover:bg-primary-container transition"
+              >
+                Reset Filter
+              </button>
             </div>
           ) : (
             (() => {
-              const currentItem = filteredLaporan[tvSlideIndex] || filteredLaporan[0];
+              const currentItem = tvFilteredLaporan[tvSlideIndex] || tvFilteredLaporan[0];
               const danaDetails = parseLaporanDanaDetails(currentItem?.laporanDana);
 
               return (
-                <div className="flex-1 flex flex-col p-6 sm:p-8 lg:p-10 overflow-y-auto">
-                  {/* Slide Title Banner */}
-                  <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 pb-6 border-b border-slate-800/80 mb-6 shrink-0">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="px-3.5 py-1 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-gradient-to-r from-purple-500/20 to-indigo-500/20 border border-purple-400/40 text-purple-300">
-                          DIVISI
-                        </span>
-                        <span className="text-xs text-slate-400">Slide {tvSlideIndex + 1} dari {filteredLaporan.length}</span>
+                <div className="flex-1 flex flex-col p-5 sm:p-7 lg:p-8 overflow-y-auto">
+                  {/* Division Banner Header */}
+                  <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3.5 pb-4 border-b border-surface-container-high mb-5 shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">
+                        <Building size={22} />
                       </div>
-                      <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-300 tracking-tight leading-tight">
-                        {currentItem?.divisi}
-                      </h1>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm">
-                        <User size={16} className="text-indigo-400 shrink-0" />
-                        <span className="text-slate-400">PJ:</span>
-                        <span className="font-bold text-slate-200">{currentItem?.namaPelapor}</span>
-                      </div>
-                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm">
-                        <Calendar size={16} className="text-emerald-400 shrink-0" />
-                        <span className="text-slate-400">Periode:</span>
-                        <span className="font-bold text-slate-200">{currentItem?.periode}</span>
-                      </div>
-                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm">
-                        <Clock size={16} className="text-amber-400 shrink-0" />
-                        <span className="text-slate-400">Dilaporkan:</span>
-                        <span className="font-mono text-slate-300">{currentItem?.timestamp}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 4 Quadrants Presentation Grid (2x2) */}
-                  <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 min-h-0">
-                    {/* Quadrant 1: Hasil Usaha & Capaian (Emerald) */}
-                    <div className="flex flex-col bg-slate-900/80 border-2 border-emerald-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-emerald-500/70 transition">
-                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 to-teal-400" />
-                      <div className="flex items-center gap-3 mb-4 shrink-0">
-                        <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                          <CheckCircle size={22} />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary">
+                            DIVISI
+                          </span>
+                          <span className="text-xs text-on-surface-variant font-medium">
+                            Laporan ke-{tvSlideIndex + 1} dari {tvFilteredLaporan.length}
+                          </span>
                         </div>
-                        <div>
-                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-400">Bagian 1</span>
-                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Hasil Usaha &amp; Capaian Selesai</h2>
-                        </div>
-                      </div>
-                      <div className="flex-1 overflow-y-auto pr-1">
-                        <p className="text-sm sm:text-base lg:text-lg text-slate-100 font-medium leading-relaxed whitespace-pre-line">
-                          {currentItem?.hasilUsaha || '(Tidak ada keterangan)'}
-                        </p>
+                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-on-surface tracking-tight leading-tight">
+                          {currentItem?.divisi}
+                        </h1>
                       </div>
                     </div>
 
-                    {/* Quadrant 2: Program Kerja Pekan Depan (Indigo) */}
-                    <div className="flex flex-col bg-slate-900/80 border-2 border-indigo-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-indigo-500/70 transition">
-                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 to-cyan-400" />
-                      <div className="flex items-center gap-3 mb-4 shrink-0">
-                        <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
-                          <Sparkles size={22} />
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-400">Bagian 2</span>
-                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Rencana Program Kerja Mendatang</h2>
-                        </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container-lowest border border-surface-container-high text-xs font-semibold text-on-surface shadow-xs">
+                        <User size={14} className="text-primary shrink-0" />
+                        <span className="text-on-surface-variant font-normal">PJ:</span>
+                        <span>{currentItem?.namaPelapor}</span>
                       </div>
-                      <div className="flex-1 overflow-y-auto pr-1">
-                        <p className="text-sm sm:text-base lg:text-lg text-slate-100 font-medium leading-relaxed whitespace-pre-line">
-                          {currentItem?.programKerja || '(Tidak ada keterangan)'}
-                        </p>
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container-lowest border border-surface-container-high text-xs font-semibold text-on-surface shadow-xs">
+                        <Calendar size={14} className="text-emerald-600 shrink-0" />
+                        <span className="text-on-surface-variant font-normal">Periode:</span>
+                        <span>{currentItem?.periode}</span>
                       </div>
-                    </div>
-
-                    {/* Quadrant 3: Evaluasi & Kendala (Amber) */}
-                    <div className="flex flex-col bg-slate-900/80 border-2 border-amber-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-amber-500/70 transition">
-                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 to-orange-400" />
-                      <div className="flex items-center gap-3 mb-4 shrink-0">
-                        <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                          <AlertTriangle size={22} />
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-amber-400">Bagian 3</span>
-                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Evaluasi, Hambatan &amp; Solusi</h2>
-                        </div>
-                      </div>
-                      <div className="flex-1 overflow-y-auto pr-1">
-                        <p className="text-sm sm:text-base lg:text-lg text-amber-100 font-medium leading-relaxed whitespace-pre-line">
-                          {currentItem?.evaluasi || '(Tidak ada hambatan/evaluasi)'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Quadrant 4: Realisasi Anggaran & Kas (Purple) */}
-                    <div className="flex flex-col bg-slate-900/80 border-2 border-purple-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-purple-500/70 transition">
-                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 to-pink-400" />
-                      <div className="flex items-center gap-3 mb-4 shrink-0">
-                        <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
-                          <DollarSign size={22} />
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-purple-400">Bagian 4</span>
-                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Realisasi Anggaran &amp; Kas</h2>
-                        </div>
-                      </div>
-
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-                        {/* Two Highlight Numbers */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 shrink-0">
-                          <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/30">
-                            <span className="text-[11px] font-bold text-rose-300 block mb-0.5">Total Pengeluaran Pekan Ini</span>
-                            <span className="text-xl sm:text-2xl font-black font-mono text-rose-400">
-                              {danaDetails.pengeluaran}
-                            </span>
-                          </div>
-                          <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30">
-                            <span className="text-[11px] font-bold text-emerald-300 block mb-0.5">Sisa Saldo Kas Divisi</span>
-                            <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400">
-                              {danaDetails.saldo}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Breakdown / Rincian Pos Belanja */}
-                        {danaDetails.rincian && (
-                          <div className="p-4 rounded-2xl bg-purple-950/30 border border-purple-500/30">
-                            <span className="text-xs font-bold text-purple-300 block mb-1">Rincian Pos Belanja / Item:</span>
-                            <p className="text-xs sm:text-sm font-mono text-purple-200 leading-relaxed whitespace-pre-line">
-                              {danaDetails.rincian}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Catatan Kas */}
-                        {danaDetails.catatan && (
-                          <div className="p-3.5 rounded-2xl bg-slate-950/40 border border-slate-800">
-                            <span className="text-[11px] font-bold text-slate-400 block mb-0.5">Catatan Kas:</span>
-                            <p className="text-xs text-slate-300 italic whitespace-pre-line">
-                              {danaDetails.catatan}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* If neither rincian nor catatan, show raw */}
-                        {!danaDetails.rincian && !danaDetails.catatan && danaDetails.raw !== '-' && (
-                          <div className="p-4 rounded-2xl bg-purple-950/30 border border-purple-500/30">
-                            <p className="text-xs sm:text-sm font-mono text-purple-200 leading-relaxed whitespace-pre-line">
-                              {danaDetails.raw}
-                            </p>
-                          </div>
-                        )}
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container-lowest border border-surface-container-high text-xs text-on-surface-variant shadow-xs">
+                        <Clock size={14} className="text-amber-600 shrink-0" />
+                        <span className="font-mono">{currentItem?.timestamp}</span>
                       </div>
                     </div>
                   </div>
+
+                  {/* SECTION DISPLAY: All (4 Quadrants) vs Focused Single Section */}
+                  {tvSectionFilter === 'all' ? (
+                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 min-h-0">
+                      {/* Quadrant 1: Hasil Usaha & Capaian (Emerald) */}
+                      <div className="flex flex-col bg-surface-container-lowest border border-emerald-200/90 rounded-3xl p-5 sm:p-6 shadow-xs">
+                        <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold inline-flex items-center gap-1.5">
+                              <CheckCircle size={14} />
+                              Bagian 1
+                            </span>
+                            <h2 className="text-base sm:text-lg font-bold text-on-surface">Hasil Usaha &amp; Capaian</h2>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTvSectionFilter('hasil')}
+                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 cursor-pointer"
+                          >
+                            Perbesar
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto pr-1">
+                          <p className="text-sm sm:text-base text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                            {currentItem?.hasilUsaha || '(Tidak ada keterangan)'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Quadrant 2: Program Kerja Pekan Depan (Indigo) */}
+                      <div className="flex flex-col bg-surface-container-lowest border border-indigo-200/90 rounded-3xl p-5 sm:p-6 shadow-xs">
+                        <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-bold inline-flex items-center gap-1.5">
+                              <Sparkles size={14} />
+                              Bagian 2
+                            </span>
+                            <h2 className="text-base sm:text-lg font-bold text-on-surface">Program Kerja Mendatang</h2>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTvSectionFilter('proker')}
+                            className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 cursor-pointer"
+                          >
+                            Perbesar
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto pr-1">
+                          <p className="text-sm sm:text-base text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                            {currentItem?.programKerja || '(Tidak ada keterangan)'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Quadrant 3: Evaluasi & Kendala (Amber) */}
+                      <div className="flex flex-col bg-surface-container-lowest border border-amber-200/90 rounded-3xl p-5 sm:p-6 shadow-xs">
+                        <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold inline-flex items-center gap-1.5">
+                              <AlertTriangle size={14} />
+                              Bagian 3
+                            </span>
+                            <h2 className="text-base sm:text-lg font-bold text-on-surface">Evaluasi &amp; Kendala Lapangan</h2>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTvSectionFilter('evaluasi')}
+                            className="text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 cursor-pointer"
+                          >
+                            Perbesar
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto pr-1">
+                          <p className="text-sm sm:text-base text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                            {currentItem?.evaluasi || '(Tidak ada kendala yang dicatat)'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Quadrant 4: Realisasi Anggaran & Kas (Purple) */}
+                      <div className="flex flex-col bg-surface-container-lowest border border-purple-200/90 rounded-3xl p-5 sm:p-6 shadow-xs">
+                        <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-xl bg-purple-50 text-purple-800 border border-purple-200 text-xs font-bold inline-flex items-center gap-1.5">
+                              <DollarSign size={14} />
+                              Bagian 4
+                            </span>
+                            <h2 className="text-base sm:text-lg font-bold text-on-surface">Realisasi Anggaran &amp; Kas</h2>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTvSectionFilter('dana')}
+                            className="text-[11px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200 cursor-pointer"
+                          >
+                            Perbesar
+                          </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
+                            <div className="p-3 rounded-2xl bg-rose-50/70 border border-rose-200">
+                              <span className="text-[10px] font-bold text-rose-700 block mb-0.5">Total Pengeluaran</span>
+                              <span className="text-lg sm:text-xl font-extrabold font-mono text-rose-800">
+                                {danaDetails.pengeluaran}
+                              </span>
+                            </div>
+                            <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+                              <span className="text-[10px] font-bold text-emerald-700 block mb-0.5">Sisa Saldo Kas</span>
+                              <span className="text-lg sm:text-xl font-extrabold font-mono text-emerald-800">
+                                {danaDetails.saldo}
+                              </span>
+                            </div>
+                          </div>
+
+                          {danaDetails.rincian && (
+                            <div className="p-3 rounded-2xl bg-surface-container-low border border-surface-container-high">
+                              <span className="text-[11px] font-bold text-on-surface-variant block mb-1">Rincian Pos Belanja:</span>
+                              <p className="text-xs font-mono text-on-surface leading-relaxed whitespace-pre-line">
+                                {danaDetails.rincian}
+                              </p>
+                            </div>
+                          )}
+
+                          {danaDetails.catatan && (
+                            <div className="p-2.5 rounded-xl bg-surface-container-low border border-surface-container-high">
+                              <span className="text-[10px] font-bold text-on-surface-variant block mb-0.5">Catatan Kas:</span>
+                              <p className="text-xs text-on-surface italic whitespace-pre-line">
+                                {danaDetails.catatan}
+                              </p>
+                            </div>
+                          )}
+
+                          {!danaDetails.rincian && !danaDetails.catatan && danaDetails.raw !== '-' && (
+                            <div className="p-3 rounded-2xl bg-surface-container-low border border-surface-container-high">
+                              <p className="text-xs font-mono text-on-surface leading-relaxed whitespace-pre-line">
+                                {danaDetails.raw}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* FOCUSED SINGLE SECTION VIEW */
+                    <div className="flex-1 flex flex-col bg-surface-container-lowest rounded-3xl p-6 sm:p-8 border border-surface-container-high shadow-xs">
+                      {tvSectionFilter === 'hasil' && (
+                        <div className="flex-1 flex flex-col">
+                          <div className="flex items-center justify-between pb-4 border-b border-surface-container-high mb-4">
+                            <div className="flex items-center gap-2.5">
+                              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold inline-flex items-center gap-1.5">
+                                <CheckCircle size={16} />
+                                Bagian 1 — Capaian Selesai
+                              </span>
+                              <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface">Hasil Usaha &amp; Capaian Kerja</h2>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setTvSectionFilter('all')}
+                              className="px-3.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-bold border border-surface-container-high transition"
+                            >
+                              ✕ Kembali ke 4 Kuadran
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto">
+                            <p className="text-base sm:text-xl text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                              {currentItem?.hasilUsaha || '(Tidak ada keterangan)'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {tvSectionFilter === 'proker' && (
+                        <div className="flex-1 flex flex-col">
+                          <div className="flex items-center justify-between pb-4 border-b border-surface-container-high mb-4">
+                            <div className="flex items-center gap-2.5">
+                              <span className="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-bold inline-flex items-center gap-1.5">
+                                <Sparkles size={16} />
+                                Bagian 2 — Program Kerja
+                              </span>
+                              <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface">Rencana Program Kerja Mendatang</h2>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setTvSectionFilter('all')}
+                              className="px-3.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-bold border border-surface-container-high transition"
+                            >
+                              ✕ Kembali ke 4 Kuadran
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto">
+                            <p className="text-base sm:text-xl text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                              {currentItem?.programKerja || '(Tidak ada keterangan)'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {tvSectionFilter === 'evaluasi' && (
+                        <div className="flex-1 flex flex-col">
+                          <div className="flex items-center justify-between pb-4 border-b border-surface-container-high mb-4">
+                            <div className="flex items-center gap-2.5">
+                              <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold inline-flex items-center gap-1.5">
+                                <AlertTriangle size={16} />
+                                Bagian 3 — Evaluasi &amp; Kendala
+                              </span>
+                              <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface">Evaluasi, Hambatan Lapangan &amp; Solusi</h2>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setTvSectionFilter('all')}
+                              className="px-3.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-bold border border-surface-container-high transition"
+                            >
+                              ✕ Kembali ke 4 Kuadran
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto">
+                            <p className="text-base sm:text-xl text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                              {currentItem?.evaluasi || '(Tidak ada kendala yang dicatat)'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {tvSectionFilter === 'dana' && (
+                        <div className="flex-1 flex flex-col">
+                          <div className="flex items-center justify-between pb-4 border-b border-surface-container-high mb-4">
+                            <div className="flex items-center gap-2.5">
+                              <span className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-800 border border-purple-200 text-xs font-bold inline-flex items-center gap-1.5">
+                                <DollarSign size={16} />
+                                Bagian 4 — Laporan Keuangan
+                              </span>
+                              <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface">Realisasi Anggaran &amp; Kas Divisi</h2>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setTvSectionFilter('all')}
+                              className="px-3.5 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-bold border border-surface-container-high transition"
+                            >
+                              ✕ Kembali ke 4 Kuadran
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="p-5 rounded-3xl bg-rose-50 border border-rose-200">
+                                <span className="text-xs font-bold text-rose-700 block mb-1">Total Pengeluaran Pekan Ini</span>
+                                <span className="text-2xl sm:text-3xl font-black font-mono text-rose-900">
+                                  {danaDetails.pengeluaran}
+                                </span>
+                              </div>
+                              <div className="p-5 rounded-3xl bg-emerald-50 border border-emerald-200">
+                                <span className="text-xs font-bold text-emerald-700 block mb-1">Sisa Saldo Kas Divisi</span>
+                                <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-900">
+                                  {danaDetails.saldo}
+                                </span>
+                              </div>
+                            </div>
+
+                            {danaDetails.rincian && (
+                              <div className="p-5 rounded-3xl bg-surface-container-low border border-surface-container-high">
+                                <span className="text-xs font-bold text-on-surface-variant block mb-2">Rincian Pos Belanja:</span>
+                                <p className="text-sm sm:text-base font-mono text-on-surface leading-relaxed whitespace-pre-line">
+                                  {danaDetails.rincian}
+                                </p>
+                              </div>
+                            )}
+
+                            {danaDetails.catatan && (
+                              <div className="p-4 rounded-2xl bg-surface-container-low border border-surface-container-high">
+                                <span className="text-xs font-bold text-on-surface-variant block mb-1">Catatan Tambahan Kas:</span>
+                                <p className="text-sm text-on-surface italic whitespace-pre-line">
+                                  {danaDetails.catatan}
+                                </p>
+                              </div>
+                            )}
+
+                            {!danaDetails.rincian && !danaDetails.catatan && danaDetails.raw !== '-' && (
+                              <div className="p-5 rounded-3xl bg-surface-container-low border border-surface-container-high">
+                                <p className="text-sm sm:text-base font-mono text-on-surface leading-relaxed whitespace-pre-line">
+                                  {danaDetails.raw}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })()
           )}
 
           {/* Bottom Remote Control Bar */}
-          <div className="bg-slate-900/90 border-t border-slate-800 px-6 py-3 flex items-center justify-between shrink-0">
+          <div className="bg-surface-container-lowest border-t border-surface-container-high px-6 py-3 flex items-center justify-between shrink-0 shadow-xs">
             {/* Keyboard / Remote TV Guide */}
-            <div className="hidden sm:flex items-center gap-3 text-xs text-slate-400">
-              <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">◄</span>
-              <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">►</span>
-              <span>Gunakan remote TV atau panah keyboard untuk ganti slide</span>
+            <div className="hidden sm:flex items-center gap-2 text-xs text-on-surface-variant">
+              <span className="px-2 py-0.5 rounded-md bg-surface-container border border-surface-container-high font-mono text-[10px] text-on-surface font-bold">◄</span>
+              <span className="px-2 py-0.5 rounded-md bg-surface-container border border-surface-container-high font-mono text-[10px] text-on-surface font-bold">►</span>
+              <span>Gunakan remote Smart TV atau panah keyboard untuk ganti laporan</span>
             </div>
 
             {/* Slide Pagination & Next/Prev Buttons */}
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
               <button
                 type="button"
-                onClick={() => setTvSlideIndex(prev => (prev > 0 ? prev - 1 : filteredLaporan.length - 1))}
-                disabled={filteredLaporan.length <= 1}
-                className="px-4 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold text-xs transition flex items-center gap-1.5 border border-slate-700 cursor-pointer active:scale-95"
+                onClick={() => setTvSlideIndex(prev => (prev > 0 ? prev - 1 : tvFilteredLaporan.length - 1))}
+                disabled={tvFilteredLaporan.length <= 1}
+                className="px-4 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 text-on-surface font-bold text-xs transition flex items-center gap-1.5 border border-surface-container-high cursor-pointer active:scale-95"
               >
                 <ChevronLeft size={16} />
                 <span>Sebelumnya</span>
               </button>
 
-              <span className="text-xs font-mono font-bold text-slate-300 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700">
-                {filteredLaporan.length > 0 ? `${tvSlideIndex + 1} / ${filteredLaporan.length}` : '0 / 0'}
+              <span className="text-xs font-mono font-bold text-on-surface px-3 py-1.5 rounded-xl bg-surface-container-low border border-surface-container-high">
+                {tvFilteredLaporan.length > 0 ? `${tvSlideIndex + 1} / ${tvFilteredLaporan.length}` : '0 / 0'}
               </span>
 
               <button
                 type="button"
-                onClick={() => setTvSlideIndex(prev => (prev < filteredLaporan.length - 1 ? prev + 1 : 0))}
-                disabled={filteredLaporan.length <= 1}
-                className="px-5 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-primary hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 text-white font-black text-xs transition flex items-center gap-1.5 shadow-lg shadow-purple-600/30 cursor-pointer active:scale-95"
+                onClick={() => setTvSlideIndex(prev => (prev < tvFilteredLaporan.length - 1 ? prev + 1 : 0))}
+                disabled={tvFilteredLaporan.length <= 1}
+                className="px-5 py-2 rounded-xl bg-primary hover:bg-primary-container disabled:opacity-40 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
               >
                 <span>Selanjutnya</span>
                 <ChevronRight size={16} />
