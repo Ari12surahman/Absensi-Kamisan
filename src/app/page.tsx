@@ -36,7 +36,12 @@ import {
   TrendingUp,
   Check,
   CheckSquare,
-  X
+  X,
+  Tv,
+  Maximize2,
+  Minimize2,
+  LayoutGrid,
+  Table
 } from 'lucide-react';
 import { AbsensiRecord, AcaraItem, DivisiItem, LaporanItem, AsatidzItem } from '@/types';
 import { getDistanceFromLatLonInM, formatDistance, extractCoordinates, parseCoordinate } from '@/lib/geo-utils';
@@ -111,6 +116,65 @@ export default function SalAppPage() {
   const getAsatidzKey = (item: AsatidzItem) => String(item?.id || item?.rowIndex || item?.nama || '');
   const getAcaraKey = (item: AcaraItem) => String(item?.id || item?.rowIndex || item?.namaAcara || '');
   const getLaporanKey = (item: LaporanItem) => String(item?.id || item?.rowIndex || `${item?.namaPelapor || ''}_${item?.waktu || ''}`);
+
+  // Laporan Admin View States (Smart TV Presentation Mode)
+  const [laporanViewMode, setLaporanViewMode] = useState<'grid' | 'table'>('grid');
+  const [tvPresentationOpen, setTvPresentationOpen] = useState(false);
+  const [tvSlideIndex, setTvSlideIndex] = useState(0);
+  const [tvIsFullscreen, setTvIsFullscreen] = useState(false);
+
+  // Helper to parse budget info for Smart TV & Executive cards
+  const parseLaporanDanaDetails = (danaStr?: string) => {
+    if (!danaStr || danaStr === '-') {
+      return { pengeluaran: 'Rp 0', saldo: 'Rp 0', rincian: '', catatan: '', raw: '-' };
+    }
+    let pengeluaran = 'Rp 0';
+    const pengeluaranMatch = danaStr.match(/(?:Total )?Pengeluaran:\s*(Rp\s*[\d.,]+)/i);
+    if (pengeluaranMatch) pengeluaran = pengeluaranMatch[1];
+
+    let saldo = '-';
+    const saldoMatch = danaStr.match(/(?:Sisa )?Saldo(?:\s*Kas)?:\s*(Rp\s*[\d.,]+)/i);
+    if (saldoMatch) saldo = saldoMatch[1];
+
+    let rincian = '';
+    const rincianMatch = danaStr.match(/\[(.*?)\]/);
+    if (rincianMatch) rincian = rincianMatch[1];
+
+    let catatan = '';
+    const catatanMatch = danaStr.match(/\(([^)]+)\)$/);
+    if (catatanMatch) catatan = catatanMatch[1];
+
+    return { pengeluaran, saldo, rincian, catatan, raw: danaStr };
+  };
+
+  const toggleFullscreen = () => {
+    if (typeof document === 'undefined') return;
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setTvIsFullscreen(true)).catch(() => {});
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().then(() => setTvIsFullscreen(false)).catch(() => {});
+      }
+    }
+  };
+
+  // Keyboard Navigation for Smart TV Presentation Mode (Left / Right / Space / Esc)
+  useEffect(() => {
+    if (!tvPresentationOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        setTvSlideIndex(prev => (prev < filteredLaporan.length - 1 ? prev + 1 : 0));
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        setTvSlideIndex(prev => (prev > 0 ? prev - 1 : filteredLaporan.length - 1));
+      } else if (e.key === 'Escape') {
+        setTvPresentationOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tvPresentationOpen, filteredLaporan.length]);
 
   // Form Presensi State
   const [formAbsenAcara, setFormAbsenAcara] = useState('');
@@ -3575,258 +3639,492 @@ export default function SalAppPage() {
               {/* ==================================================== */}
               {adminTab === 'laporan' && (
                 <div className="space-y-6 w-full max-w-full">
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  {/* Top Bar with Smart TV Presentation & View Toggle */}
+                  <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-surface-container-lowest p-4 sm:p-5 rounded-3xl border border-surface-container-high shadow-xs">
                     <div>
-                      <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Laporan Divisi Masuk</h2>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
-                        Verifikasi capaian kerja divisi, evaluasi hambatan, dan realisasi kas per pekan.
-                      </p>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold shadow-xs">
+                          <FileText size={20} />
+                        </div>
+                        <div>
+                          <h2 className="text-xl sm:text-2xl font-extrabold text-on-surface tracking-tight">Laporan Divisi Masuk</h2>
+                          <p className="text-xs text-on-surface-variant mt-0.5">
+                            Verifikasi capaian kerja divisi, evaluasi hambatan, dan realisasi kas per pekan.
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-start xl:justify-end">
+                      {/* Tombol Mode Presentasi Smart TV */}
                       <button
                         type="button"
-                        onClick={() => exportExcelLaporan(filteredLaporan, filterDivisiAdmin)}
-                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                        onClick={() => {
+                          setTvSlideIndex(0);
+                          setTvPresentationOpen(true);
+                        }}
+                        className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-primary hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs transition shadow-lg shadow-purple-600/25 flex items-center gap-2 active:scale-95 cursor-pointer"
+                        title="Buka tampilan layar penuh untuk dipresentasikan di Smart TV"
                       >
-                        <Download size={16} />
-                        <span>Excel</span>
+                        <Tv size={17} />
+                        <span>Mode Presentasi Smart TV</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => exportPdfLaporan(filteredLaporan, filterDivisiAdmin)}
-                        className="px-4 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
-                      >
-                        <Download size={16} />
-                        <span>PDF</span>
-                      </button>
+
+                      {/* View Switcher: Kartu Eksekutif vs Tabel Data */}
+                      <div className="flex items-center p-1 bg-surface-container-low rounded-2xl border border-surface-container-high">
+                        <button
+                          type="button"
+                          onClick={() => setLaporanViewMode('grid')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                            laporanViewMode === 'grid'
+                              ? 'bg-surface-container-lowest text-primary shadow-xs'
+                              : 'text-on-surface-variant hover:text-on-surface'
+                          }`}
+                          title="Tampilan Kartu Eksekutif"
+                        >
+                          <LayoutGrid size={15} />
+                          <span className="hidden sm:inline">Kartu Eksekutif</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLaporanViewMode('table')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                            laporanViewMode === 'table'
+                              ? 'bg-surface-container-lowest text-primary shadow-xs'
+                              : 'text-on-surface-variant hover:text-on-surface'
+                          }`}
+                          title="Tampilan Tabel Data"
+                        >
+                          <Table size={15} />
+                          <span className="hidden sm:inline">Tabel Data</span>
+                        </button>
+                      </div>
+
+                      {/* Export Excel & PDF */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => exportExcelLaporan(filteredLaporan, filterDivisiAdmin)}
+                          className="px-3.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                          title="Ekspor ke Excel"
+                        >
+                          <Download size={15} />
+                          <span>Excel</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => exportPdfLaporan(filteredLaporan, filterDivisiAdmin)}
+                          className="px-3.5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                          title="Ekspor ke PDF"
+                        >
+                          <Download size={15} />
+                          <span>PDF</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* MOBILE VIEW: Cards for Laporan (block md:hidden) */}
-                  <div className="space-y-3 block md:hidden">
-                    {/* Mobile Bulk Selection Bar */}
-                    {paginatedLaporan.length > 0 && (
-                      <div className="flex items-center justify-between bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
-                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)))}
-                            onChange={() => {
-                              const allSelected = paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)));
-                              if (allSelected) {
-                                const pageKeys = new Set(paginatedLaporan.map(getLaporanKey));
-                                setSelectedLaporanKeys(prev => prev.filter(k => !pageKeys.has(k)));
-                              } else {
-                                const pageKeys = paginatedLaporan.map(getLaporanKey);
-                                setSelectedLaporanKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
-                              }
-                            }}
-                            className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
-                          />
-                          <span>Pilih Semua di Halaman Ini</span>
-                        </label>
-                        {selectedLaporanKeys.length > 0 && (
-                          <span className="text-[11px] text-primary font-bold">{selectedLaporanKeys.length} dipilih</span>
+                  {/* Search Bar & Horizontal Quick Division Filter Pills */}
+                  <div className="bg-surface-container-lowest p-4 rounded-3xl border border-surface-container-high shadow-xs space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                      <div className="relative flex-1">
+                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                        <input
+                          type="text"
+                          value={searchLaporanAdmin}
+                          onChange={e => setSearchLaporanAdmin(e.target.value)}
+                          placeholder="Cari nama divisi, pelapor, atau uraian laporan..."
+                          className="w-full bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl pl-10 pr-4 py-2.5 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition"
+                        />
+                        {searchLaporanAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchLaporanAdmin('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface text-xs font-bold"
+                          >
+                            ✕
+                          </button>
                         )}
                       </div>
-                    )}
 
-                    {paginatedLaporan.length === 0 ? (
-                      <div className="bg-surface-container-lowest rounded-3xl p-8 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
-                        {loadingLaporan ? 'Memuat data laporan...' : 'Tidak ada laporan divisi masuk.'}
-                      </div>
-                    ) : (
-                      paginatedLaporan.map((item, idx) => (
-                        <div
-                          key={item.id || idx}
-                          className={`bg-surface-container-lowest rounded-3xl p-4 shadow-xs border flex flex-col gap-3 transition ${
-                            selectedLaporanKeys.includes(getLaporanKey(item))
-                              ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
-                              : 'border-surface-container-high'
-                          }`}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-bold text-on-surface-variant">Filter Divisi:</span>
+                        <select
+                          value={filterDivisiAdmin}
+                          onChange={e => setFilterDivisiAdmin(e.target.value)}
+                          className="bg-surface-container-low border border-surface-container-high rounded-2xl px-3 py-2 text-xs font-bold text-on-surface focus:outline-none focus:border-primary"
                         >
-                          {/* Card Header: Checkbox + Division Icon + Name + Reporter & Period */}
-                          <div className="flex items-start justify-between gap-2.5">
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <input
-                                type="checkbox"
-                                aria-label={`Pilih ${item.divisi}`}
-                                checked={selectedLaporanKeys.includes(getLaporanKey(item))}
-                                onChange={() => {
-                                  const k = getLaporanKey(item);
-                                  setSelectedLaporanKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
-                                }}
-                                className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer shrink-0 mt-0.5"
-                              />
-                              <div className="w-10 h-10 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                                <FileText size={18} />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <h3 className="text-sm font-bold text-primary truncate leading-tight">{item.divisi}</h3>
-                                <p className="text-[11px] text-on-surface font-semibold mt-0.5 truncate">
-                                  PJ: {item.namaPelapor}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="px-2.5 py-1 rounded-full bg-surface-container-low text-primary text-[10px] font-bold shrink-0 border border-surface-container-high/60">
-                              {item.periode || 'Pekan Ini'}
-                            </span>
-                          </div>
+                          <option value="">Semua Divisi ({laporanList.length})</option>
+                          {divisiList.map(d => (
+                            <option key={d.id} value={d.namaDivisi}>
+                              {d.namaDivisi} ({laporanList.filter(l => l.divisi === d.namaDivisi).length})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
 
-                          {/* Capaian & Program Kerja */}
-                          {item.hasilUsaha && (
-                            <div className="bg-surface-container-low/40 p-3 rounded-2xl border border-surface-container-high/40 flex flex-col gap-1">
-                              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">
-                                Capaian &amp; Proker
-                              </span>
-                              <p className="text-xs text-on-surface leading-relaxed break-words">
-                                {item.hasilUsaha}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Anggaran & Kas (Dedicated full-width block, never overlaps or 'tembus-tembus') */}
-                          {item.laporanDana && item.laporanDana !== '-' && (
-                            <div className="bg-surface-container-low/80 p-3 rounded-2xl border border-surface-container-high/60 flex items-start gap-2.5">
-                              <DollarSign size={16} className="text-primary shrink-0 mt-0.5" />
-                              <div className="min-w-0 flex-1">
-                                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
-                                  Anggaran &amp; Realisasi Kas
-                                </span>
-                                <p className="font-mono text-xs font-semibold text-primary break-words mt-0.5 leading-relaxed">
-                                  {item.laporanDana}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-surface-container-low">
-                            <button
-                              type="button"
-                              onClick={() => setModalDetailLaporan({ open: true, item })}
-                              className="px-3 py-1.5 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                            >
-                              <Eye size={14} />
-                              <span>Detail</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setModalEditLaporan({ open: true, item })}
-                              className="px-3 py-1.5 rounded-xl bg-surface-container text-on-surface-variant hover:text-primary text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                            >
-                              <Edit size={14} />
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteLaporan(item)}
-                              className="px-3 py-1.5 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                            >
-                              <Trash2 size={14} />
-                              <span>Hapus</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {/* DESKTOP VIEW: Table Laporan (hidden md:block) */}
-                  <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar hidden md:block">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
-                          <th className="p-4 w-10 text-center">
-                            <input
-                              type="checkbox"
-                              aria-label="Pilih semua laporan di halaman ini"
-                              checked={paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)))}
-                              onChange={() => {
-                                const allSelected = paginatedLaporan.length > 0 && paginatedLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)));
-                                if (allSelected) {
-                                  const pageKeys = new Set(paginatedLaporan.map(getLaporanKey));
-                                  setSelectedLaporanKeys(prev => prev.filter(k => !pageKeys.has(k)));
-                                } else {
-                                  const pageKeys = paginatedLaporan.map(getLaporanKey);
-                                  setSelectedLaporanKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
-                                }
-                              }}
-                              className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
-                            />
-                          </th>
-                          <th className="p-4 w-12 text-center">NO</th>
-                          <th className="p-4 whitespace-nowrap">DIVISI</th>
-                          <th className="p-4 whitespace-nowrap">PELAPOR &amp; PERIODE</th>
-                          <th className="p-4 min-w-[200px]">RINGKASAN CAPAIAN</th>
-                          <th className="p-4 whitespace-nowrap">ANGGARAN &amp; KAS</th>
-                          <th className="p-4 text-center whitespace-nowrap">AKSI</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-xs divide-y divide-surface-container-high">
-                        {paginatedLaporan.map((item, idx) => (
-                          <tr
-                            key={item.id || idx}
-                            className={`hover:bg-surface-container-low transition-colors ${
-                              selectedLaporanKeys.includes(getLaporanKey(item)) ? 'bg-primary/5' : ''
+                    {/* Quick Division Badges Bar */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 hide-scrollbar">
+                      <button
+                        type="button"
+                        onClick={() => setFilterDivisiAdmin('')}
+                        className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                          !filterDivisiAdmin
+                            ? 'bg-primary text-white shadow-xs'
+                            : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
+                        }`}
+                      >
+                        Semua ({laporanList.length})
+                      </button>
+                      {divisiList.map(d => {
+                        const count = laporanList.filter(l => l.divisi === d.namaDivisi).length;
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => setFilterDivisiAdmin(d.namaDivisi)}
+                            className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                              filterDivisiAdmin === d.namaDivisi
+                                ? 'bg-primary text-white shadow-xs'
+                                : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
                             }`}
                           >
-                            <td className="p-4 text-center">
+                            {d.namaDivisi} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Bulk Select Helper Strip */}
+                  {filteredLaporan.length > 0 && (
+                    <div className="flex items-center justify-between bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={filteredLaporan.length > 0 && filteredLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)))}
+                          onChange={() => {
+                            const allSelected = filteredLaporan.length > 0 && filteredLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)));
+                            if (allSelected) {
+                              const pageKeys = new Set(filteredLaporan.map(getLaporanKey));
+                              setSelectedLaporanKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                            } else {
+                              const pageKeys = filteredLaporan.map(getLaporanKey);
+                              setSelectedLaporanKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                            }
+                          }}
+                          className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                        />
+                        <span>Pilih Semua Laporan ({filteredLaporan.length})</span>
+                      </label>
+                      {selectedLaporanKeys.length > 0 && (
+                        <span className="text-[11px] text-primary font-bold">{selectedLaporanKeys.length} laporan dipilih</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {filteredLaporan.length === 0 ? (
+                    <div className="bg-surface-container-lowest rounded-3xl p-12 text-center text-xs text-on-surface-variant font-medium border border-surface-container-high shadow-xs">
+                      <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center mx-auto mb-3 text-on-surface-variant">
+                        <FileText size={26} />
+                      </div>
+                      <p className="font-bold text-sm text-on-surface">
+                        {loadingLaporan ? 'Memuat data laporan...' : 'Tidak ada laporan divisi yang sesuai.'}
+                      </p>
+                      <p className="text-xs text-on-surface-variant mt-1">
+                        Pilih divisi lain atau pastikan pelapor sudah mengisi form laporan divisi.
+                      </p>
+                    </div>
+                  ) : laporanViewMode === 'grid' ? (
+                    /* ==================================================== */
+                    /* VIEW MODE 1: KARTU EKSEKUTIF (PRESENTASI SIAP TV)     */
+                    /* ==================================================== */
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                      {filteredLaporan.map((item, idx) => {
+                        const danaDetails = parseLaporanDanaDetails(item.laporanDana);
+                        const isSelected = selectedLaporanKeys.includes(getLaporanKey(item));
+
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className={`bg-surface-container-lowest rounded-3xl p-5 shadow-sm border flex flex-col justify-between gap-4 transition-all duration-200 hover:shadow-md ${
+                              isSelected
+                                ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
+                                : 'border-surface-container-high hover:border-primary/40'
+                            }`}
+                          >
+                            {/* Card Header */}
+                            <div className="flex items-start justify-between gap-3 pb-3 border-b border-surface-container-high">
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Pilih ${item.divisi}`}
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    const k = getLaporanKey(item);
+                                    setSelectedLaporanKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                  }}
+                                  className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer shrink-0 mt-0.5"
+                                />
+                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary flex items-center justify-center font-bold text-sm shrink-0 shadow-xs border border-primary/20">
+                                  <FileText size={20} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="text-base font-extrabold text-primary truncate leading-tight tracking-tight">
+                                    {item.divisi}
+                                  </h3>
+                                  <p className="text-xs text-on-surface font-semibold mt-0.5 truncate flex items-center gap-1.5">
+                                    <span>PJ: {item.namaPelapor}</span>
+                                    <span className="text-on-surface-variant">&bull;</span>
+                                    <span className="text-[11px] text-on-surface-variant font-normal">{item.waktu}</span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-extrabold shrink-0 border border-primary/20">
+                                {item.periode || 'Pekan Ini'}
+                              </span>
+                            </div>
+
+                            {/* 4 Executive Blocks */}
+                            <div className="space-y-3 flex-1">
+                              {/* 1. Hasil Kerja */}
+                              <div className="bg-emerald-500/5 p-3.5 rounded-2xl border border-emerald-500/20">
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <CheckCircle size={14} className="text-emerald-600 dark:text-emerald-400" />
+                                  <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                                    1. Hasil Kerja &amp; Capaian Selesai
+                                  </span>
+                                </div>
+                                <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                                  {item.hasilUsaha || '-'}
+                                </p>
+                              </div>
+
+                              {/* 2. Program Kerja */}
+                              <div className="bg-primary/5 p-3.5 rounded-2xl border border-primary/20">
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <Calendar size={14} className="text-primary" />
+                                  <span className="text-[11px] font-bold text-primary uppercase tracking-wider">
+                                    2. Program Kerja Tindak Lanjut
+                                  </span>
+                                </div>
+                                <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                                  {item.programKerja || '-'}
+                                </p>
+                              </div>
+
+                              {/* 3. Evaluasi & Kendala */}
+                              <div className="bg-amber-500/5 p-3.5 rounded-2xl border border-amber-500/20">
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
+                                  <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                                    3. Evaluasi &amp; Kendala Lapangan
+                                  </span>
+                                </div>
+                                <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-line">
+                                  {item.evaluasi || '-'}
+                                </p>
+                              </div>
+
+                              {/* 4. Realisasi Anggaran & Kas */}
+                              <div className="bg-purple-500/5 p-3.5 rounded-2xl border border-purple-500/20 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <DollarSign size={14} className="text-purple-700 dark:text-purple-300" />
+                                    <span className="text-[11px] font-bold text-purple-900 dark:text-purple-200 uppercase tracking-wider">
+                                      4. Realisasi Anggaran &amp; Kas
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-xl border border-purple-200 dark:border-purple-800/40">
+                                    <span className="text-[10px] font-bold text-on-surface-variant block">Pengeluaran:</span>
+                                    <span className="text-xs sm:text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                                      {danaDetails.pengeluaran}
+                                    </span>
+                                  </div>
+                                  <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-xl border border-purple-200 dark:border-purple-800/40">
+                                    <span className="text-[10px] font-bold text-on-surface-variant block">Sisa Saldo Kas:</span>
+                                    <span className="text-xs sm:text-sm font-bold font-mono text-purple-700 dark:text-purple-300">
+                                      {danaDetails.saldo}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {(danaDetails.rincian || danaDetails.catatan) && (
+                                  <p className="text-[11px] font-mono text-on-surface-variant leading-relaxed bg-surface-container-low/60 p-2 rounded-xl">
+                                    {danaDetails.rincian && <span><strong>Rincian:</strong> {danaDetails.rincian}<br /></span>}
+                                    {danaDetails.catatan && <span><strong>Catatan:</strong> {danaDetails.catatan}</span>}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Card Footer Actions */}
+                            <div className="flex items-center justify-between pt-3 border-t border-surface-container-high gap-2">
+                              {/* Tombol Presentasi Slide Ini di Smart TV */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTvSlideIndex(idx);
+                                  setTvPresentationOpen(true);
+                                }}
+                                className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                                title="Buka slide ini langsung di Mode Smart TV"
+                              >
+                                <Tv size={14} />
+                                <span>Presentasikan di TV</span>
+                              </button>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setModalDetailLaporan({ open: true, item })}
+                                  className="px-3 py-2 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                                  title="Lihat Detail Lengkap"
+                                >
+                                  <Eye size={14} />
+                                  <span>Detail</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setModalEditLaporan({ open: true, item })}
+                                  className="px-3 py-2 rounded-xl bg-surface-container text-on-surface-variant hover:text-primary text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                                  title="Edit Laporan"
+                                >
+                                  <Edit size={14} />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLaporan(item)}
+                                  className="px-3 py-2 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                                  title="Hapus Laporan"
+                                >
+                                  <Trash2 size={14} />
+                                  <span>Hapus</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* ==================================================== */
+                    /* VIEW MODE 2: TABEL DATA LENGKAP                     */
+                    /* ==================================================== */
+                    <div className="bg-surface-container-lowest rounded-3xl shadow-xs border border-surface-container-high overflow-x-auto table-scroll-container hide-scrollbar">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-surface-container-low text-on-surface-variant text-[11px] border-b border-surface-container-high font-bold uppercase tracking-wider">
+                            <th className="p-4 w-10 text-center">
                               <input
                                 type="checkbox"
-                                aria-label={`Pilih ${item.divisi}`}
-                                checked={selectedLaporanKeys.includes(getLaporanKey(item))}
+                                aria-label="Pilih semua laporan di halaman ini"
+                                checked={filteredLaporan.length > 0 && filteredLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)))}
                                 onChange={() => {
-                                  const k = getLaporanKey(item);
-                                  setSelectedLaporanKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                  const allSelected = filteredLaporan.length > 0 && filteredLaporan.every(item => selectedLaporanKeys.includes(getLaporanKey(item)));
+                                  if (allSelected) {
+                                    const pageKeys = new Set(filteredLaporan.map(getLaporanKey));
+                                    setSelectedLaporanKeys(prev => prev.filter(k => !pageKeys.has(k)));
+                                  } else {
+                                    const pageKeys = filteredLaporan.map(getLaporanKey);
+                                    setSelectedLaporanKeys(prev => Array.from(new Set([...prev, ...pageKeys])));
+                                  }
                                 }}
                                 className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
                               />
-                            </td>
-                            <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
-                            <td className="p-4 whitespace-nowrap font-bold text-primary">{item.divisi}</td>
-                            <td className="p-4 whitespace-nowrap">
-                              <p className="font-bold text-on-surface">{item.namaPelapor}</p>
-                              <span className="text-[11px] text-on-surface-variant font-medium">{item.periode}</span>
-                            </td>
-                            <td className="p-4 min-w-[200px]">
-                              <p className="text-xs text-on-surface line-clamp-2 leading-relaxed">{item.hasilUsaha}</p>
-                            </td>
-                            <td className="p-4 text-xs font-mono text-on-surface-variant max-w-[220px]">
-                              <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-semibold text-primary block truncate" title={item.laporanDana}>
-                                {item.laporanDana}
-                              </span>
-                            </td>
-                            <td className="p-4 text-center whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => setModalDetailLaporan({ open: true, item })}
-                                className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
-                                title="Lihat Detail Laporan"
-                              >
-                                <Eye size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setModalEditLaporan({ open: true, item })}
-                                className="text-on-surface-variant hover:text-primary bg-surface-container hover:bg-surface-container-high p-2 rounded-xl transition mr-1"
-                                title="Edit Laporan"
-                              >
-                                <Edit size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteLaporan(item)}
-                                className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
-                                title="Hapus Laporan"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
+                            </th>
+                            <th className="p-4 w-12 text-center">NO</th>
+                            <th className="p-4 whitespace-nowrap">DIVISI</th>
+                            <th className="p-4 whitespace-nowrap">PELAPOR &amp; PERIODE</th>
+                            <th className="p-4 min-w-[200px]">RINGKASAN CAPAIAN</th>
+                            <th className="p-4 whitespace-nowrap">ANGGARAN &amp; KAS</th>
+                            <th className="p-4 text-center whitespace-nowrap">AKSI</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="text-xs divide-y divide-surface-container-high">
+                          {filteredLaporan.map((item, idx) => (
+                            <tr
+                              key={item.id || idx}
+                              className={`hover:bg-surface-container-low transition-colors ${
+                                selectedLaporanKeys.includes(getLaporanKey(item)) ? 'bg-primary/5' : ''
+                              }`}
+                            >
+                              <td className="p-4 text-center">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Pilih ${item.divisi}`}
+                                  checked={selectedLaporanKeys.includes(getLaporanKey(item))}
+                                  onChange={() => {
+                                    const k = getLaporanKey(item);
+                                    setSelectedLaporanKeys(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
+                                  }}
+                                  className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
+                                />
+                              </td>
+                              <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
+                              <td className="p-4 whitespace-nowrap font-bold text-primary">{item.divisi}</td>
+                              <td className="p-4 whitespace-nowrap">
+                                <p className="font-bold text-on-surface">{item.namaPelapor}</p>
+                                <span className="text-[11px] text-on-surface-variant font-medium">{item.periode}</span>
+                              </td>
+                              <td className="p-4 min-w-[200px]">
+                                <p className="text-xs text-on-surface line-clamp-2 leading-relaxed">{item.hasilUsaha}</p>
+                              </td>
+                              <td className="p-4 text-xs font-mono text-on-surface-variant max-w-[220px]">
+                                <span className="px-2.5 py-1 rounded-lg bg-surface-container-low font-semibold text-primary block truncate" title={item.laporanDana}>
+                                  {item.laporanDana}
+                                </span>
+                              </td>
+                              <td className="p-4 text-center whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTvSlideIndex(idx);
+                                    setTvPresentationOpen(true);
+                                  }}
+                                  className="text-purple-600 bg-purple-50 hover:bg-purple-600 hover:text-white p-2 rounded-xl transition mr-1"
+                                  title="Presentasikan di Smart TV"
+                                >
+                                  <Tv size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setModalDetailLaporan({ open: true, item })}
+                                  className="text-primary bg-primary-fixed hover:bg-primary-container hover:text-white p-2 rounded-xl transition mr-1"
+                                  title="Lihat Detail Laporan"
+                                >
+                                  <Eye size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setModalEditLaporan({ open: true, item })}
+                                  className="text-on-surface-variant hover:text-primary bg-surface-container hover:bg-surface-container-high p-2 rounded-xl transition mr-1"
+                                  title="Edit Laporan"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLaporan(item)}
+                                  className="text-error bg-error-container hover:bg-red-200 p-2 rounded-xl transition"
+                                  title="Hapus Laporan"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4632,6 +4930,283 @@ export default function SalAppPage() {
                 Simpan Agenda
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL / OVERLAY: SMART TV PRESENTATION MODE          */}
+      {/* ==================================================== */}
+      {tvPresentationOpen && (
+        <div className="fixed inset-0 bg-slate-950 text-white z-[95] flex flex-col overflow-hidden select-none animate-fadeIn">
+          {/* Top Bar: TV Header & Quick Controls */}
+          <div className="bg-slate-900/90 border-b border-slate-800 px-6 py-3 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 font-extrabold text-xs uppercase tracking-wider flex items-center gap-2">
+                <Tv size={15} className="animate-pulse text-purple-400" />
+                <span>MODE SMART TV</span>
+              </span>
+              <div className="hidden md:flex items-center gap-2 text-xs text-slate-400">
+                <span className="font-bold text-slate-200">SalApp Asatidz</span>
+                <span>•</span>
+                <span>Forum Musyawarah &amp; Evaluasi Divisi</span>
+              </div>
+            </div>
+
+            {/* Quick Division Jump Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto max-w-xl py-1 scrollbar-none px-2">
+              {filteredLaporan.map((item, idx) => (
+                <button
+                  key={`tv-jump-${item.id || idx}`}
+                  type="button"
+                  onClick={() => setTvSlideIndex(idx)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                    tvSlideIndex === idx
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400'
+                      : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
+                  }`}
+                >
+                  {item.divisi}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Fullscreen Button */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+                title="Layar Penuh (F11)"
+              >
+                {tvIsFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                <span className="hidden sm:inline">{tvIsFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+              </button>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setTvPresentationOpen(false)}
+                className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-bold transition flex items-center gap-1 border border-rose-500/40 cursor-pointer"
+                title="Tutup Mode Presentasi (ESC)"
+              >
+                <X size={15} />
+                <span>ESC</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Slide Content */}
+          {filteredLaporan.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+              <div className="w-20 h-20 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mb-4">
+                <FileText size={40} />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-200">Belum Ada Laporan Divisi</h3>
+              <p className="text-sm text-slate-400 mt-2 max-w-md">
+                Tidak ada laporan masuk yang cocok dengan filter atau pencarian saat ini.
+              </p>
+            </div>
+          ) : (
+            (() => {
+              const currentItem = filteredLaporan[tvSlideIndex] || filteredLaporan[0];
+              const danaDetails = parseLaporanDanaDetails(currentItem?.laporanDana);
+
+              return (
+                <div className="flex-1 flex flex-col p-6 sm:p-8 lg:p-10 overflow-y-auto">
+                  {/* Slide Title Banner */}
+                  <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 pb-6 border-b border-slate-800/80 mb-6 shrink-0">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="px-3.5 py-1 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-gradient-to-r from-purple-500/20 to-indigo-500/20 border border-purple-400/40 text-purple-300">
+                          DIVISI
+                        </span>
+                        <span className="text-xs text-slate-400">Slide {tvSlideIndex + 1} dari {filteredLaporan.length}</span>
+                      </div>
+                      <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-300 tracking-tight leading-tight">
+                        {currentItem?.divisi}
+                      </h1>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm">
+                        <User size={16} className="text-indigo-400 shrink-0" />
+                        <span className="text-slate-400">PJ:</span>
+                        <span className="font-bold text-slate-200">{currentItem?.namaPelapor}</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm">
+                        <Calendar size={16} className="text-emerald-400 shrink-0" />
+                        <span className="text-slate-400">Periode:</span>
+                        <span className="font-bold text-slate-200">{currentItem?.periode}</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm">
+                        <Clock size={16} className="text-amber-400 shrink-0" />
+                        <span className="text-slate-400">Dilaporkan:</span>
+                        <span className="font-mono text-slate-300">{currentItem?.timestamp}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4 Quadrants Presentation Grid (2x2) */}
+                  <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 min-h-0">
+                    {/* Quadrant 1: Hasil Usaha & Capaian (Emerald) */}
+                    <div className="flex flex-col bg-slate-900/80 border-2 border-emerald-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-emerald-500/70 transition">
+                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 to-teal-400" />
+                      <div className="flex items-center gap-3 mb-4 shrink-0">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                          <CheckCircle size={22} />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-400">Bagian 1</span>
+                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Hasil Usaha &amp; Capaian Selesai</h2>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-y-auto pr-1">
+                        <p className="text-sm sm:text-base lg:text-lg text-slate-100 font-medium leading-relaxed whitespace-pre-line">
+                          {currentItem?.hasilUsaha || '(Tidak ada keterangan)'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Quadrant 2: Program Kerja Pekan Depan (Indigo) */}
+                    <div className="flex flex-col bg-slate-900/80 border-2 border-indigo-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-indigo-500/70 transition">
+                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 to-cyan-400" />
+                      <div className="flex items-center gap-3 mb-4 shrink-0">
+                        <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
+                          <Sparkles size={22} />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-400">Bagian 2</span>
+                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Rencana Program Kerja Mendatang</h2>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-y-auto pr-1">
+                        <p className="text-sm sm:text-base lg:text-lg text-slate-100 font-medium leading-relaxed whitespace-pre-line">
+                          {currentItem?.programKerja || '(Tidak ada keterangan)'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Quadrant 3: Evaluasi & Kendala (Amber) */}
+                    <div className="flex flex-col bg-slate-900/80 border-2 border-amber-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-amber-500/70 transition">
+                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 to-orange-400" />
+                      <div className="flex items-center gap-3 mb-4 shrink-0">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                          <AlertTriangle size={22} />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-amber-400">Bagian 3</span>
+                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Evaluasi, Hambatan &amp; Solusi</h2>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-y-auto pr-1">
+                        <p className="text-sm sm:text-base lg:text-lg text-amber-100 font-medium leading-relaxed whitespace-pre-line">
+                          {currentItem?.evaluasi || '(Tidak ada hambatan/evaluasi)'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Quadrant 4: Realisasi Anggaran & Kas (Purple) */}
+                    <div className="flex flex-col bg-slate-900/80 border-2 border-purple-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden group hover:border-purple-500/70 transition">
+                      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 to-pink-400" />
+                      <div className="flex items-center gap-3 mb-4 shrink-0">
+                        <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
+                          <DollarSign size={22} />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-purple-400">Bagian 4</span>
+                          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Realisasi Anggaran &amp; Kas</h2>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                        {/* Two Highlight Numbers */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 shrink-0">
+                          <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/30">
+                            <span className="text-[11px] font-bold text-rose-300 block mb-0.5">Total Pengeluaran Pekan Ini</span>
+                            <span className="text-xl sm:text-2xl font-black font-mono text-rose-400">
+                              {danaDetails.pengeluaran}
+                            </span>
+                          </div>
+                          <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30">
+                            <span className="text-[11px] font-bold text-emerald-300 block mb-0.5">Sisa Saldo Kas Divisi</span>
+                            <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400">
+                              {danaDetails.saldo}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Breakdown / Rincian Pos Belanja */}
+                        {danaDetails.rincian && (
+                          <div className="p-4 rounded-2xl bg-purple-950/30 border border-purple-500/30">
+                            <span className="text-xs font-bold text-purple-300 block mb-1">Rincian Pos Belanja / Item:</span>
+                            <p className="text-xs sm:text-sm font-mono text-purple-200 leading-relaxed whitespace-pre-line">
+                              {danaDetails.rincian}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Catatan Kas */}
+                        {danaDetails.catatan && (
+                          <div className="p-3.5 rounded-2xl bg-slate-950/40 border border-slate-800">
+                            <span className="text-[11px] font-bold text-slate-400 block mb-0.5">Catatan Kas:</span>
+                            <p className="text-xs text-slate-300 italic whitespace-pre-line">
+                              {danaDetails.catatan}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* If neither rincian nor catatan, show raw */}
+                        {!danaDetails.rincian && !danaDetails.catatan && danaDetails.raw !== '-' && (
+                          <div className="p-4 rounded-2xl bg-purple-950/30 border border-purple-500/30">
+                            <p className="text-xs sm:text-sm font-mono text-purple-200 leading-relaxed whitespace-pre-line">
+                              {danaDetails.raw}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+
+          {/* Bottom Remote Control Bar */}
+          <div className="bg-slate-900/90 border-t border-slate-800 px-6 py-3 flex items-center justify-between shrink-0">
+            {/* Keyboard / Remote TV Guide */}
+            <div className="hidden sm:flex items-center gap-3 text-xs text-slate-400">
+              <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">◄</span>
+              <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">►</span>
+              <span>Gunakan remote TV atau panah keyboard untuk ganti slide</span>
+            </div>
+
+            {/* Slide Pagination & Next/Prev Buttons */}
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setTvSlideIndex(prev => (prev > 0 ? prev - 1 : filteredLaporan.length - 1))}
+                disabled={filteredLaporan.length <= 1}
+                className="px-4 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold text-xs transition flex items-center gap-1.5 border border-slate-700 cursor-pointer active:scale-95"
+              >
+                <ChevronLeft size={16} />
+                <span>Sebelumnya</span>
+              </button>
+
+              <span className="text-xs font-mono font-bold text-slate-300 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700">
+                {filteredLaporan.length > 0 ? `${tvSlideIndex + 1} / ${filteredLaporan.length}` : '0 / 0'}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setTvSlideIndex(prev => (prev < filteredLaporan.length - 1 ? prev + 1 : 0))}
+                disabled={filteredLaporan.length <= 1}
+                className="px-5 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-primary hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 text-white font-black text-xs transition flex items-center gap-1.5 shadow-lg shadow-purple-600/30 cursor-pointer active:scale-95"
+              >
+                <span>Selanjutnya</span>
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         </div>
       )}
