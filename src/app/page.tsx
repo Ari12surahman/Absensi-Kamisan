@@ -3697,7 +3697,7 @@ export default function SalAppPage() {
                           setTvSlideIndex(0);
                           setTvPresentationOpen(true);
                         }}
-                        className="px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-xs flex items-center gap-2 active:scale-95 cursor-pointer"
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-primary hover:bg-primary-container text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
                         title="Buka tampilan layar penuh untuk dipresentasikan di Smart TV"
                       >
                         <Tv size={17} />
@@ -3705,11 +3705,11 @@ export default function SalAppPage() {
                       </button>
 
                       {/* View Switcher: Kartu Eksekutif vs Tabel Data */}
-                      <div className="flex items-center p-1 bg-surface-container-low rounded-2xl border border-surface-container-high">
+                      <div className="flex items-center p-1 bg-surface-container-low rounded-2xl border border-surface-container-high w-full sm:w-auto justify-center">
                         <button
                           type="button"
                           onClick={() => setLaporanViewMode('grid')}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                          className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
                             laporanViewMode === 'grid'
                               ? 'bg-surface-container-lowest text-primary shadow-xs'
                               : 'text-on-surface-variant hover:text-on-surface'
@@ -3717,12 +3717,12 @@ export default function SalAppPage() {
                           title="Tampilan Kartu Eksekutif"
                         >
                           <LayoutGrid size={15} />
-                          <span className="hidden sm:inline">Kartu Eksekutif</span>
+                          <span>Kartu Eksekutif</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setLaporanViewMode('table')}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                          className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
                             laporanViewMode === 'table'
                               ? 'bg-surface-container-lowest text-primary shadow-xs'
                               : 'text-on-surface-variant hover:text-on-surface'
@@ -3730,16 +3730,16 @@ export default function SalAppPage() {
                           title="Tampilan Tabel Data"
                         >
                           <Table size={15} />
-                          <span className="hidden sm:inline">Tabel Data</span>
+                          <span>Tabel Data</span>
                         </button>
                       </div>
 
                       {/* Export Excel & PDF */}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
                         <button
                           type="button"
                           onClick={() => exportExcelLaporan(filteredLaporan, filterDivisiAdmin)}
-                          className="px-3.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                          className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 active:scale-95"
                           title="Ekspor ke Excel"
                         >
                           <Download size={15} />
@@ -3748,7 +3748,7 @@ export default function SalAppPage() {
                         <button
                           type="button"
                           onClick={() => exportPdfLaporan(filteredLaporan, filterDivisiAdmin)}
-                          className="px-3.5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-95"
+                          className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 active:scale-95"
                           title="Ekspor ke PDF"
                         >
                           <Download size={15} />
@@ -3883,7 +3883,7 @@ export default function SalAppPage() {
                         return (
                           <div
                             key={item.id || idx}
-                            className={`bg-surface-container-lowest rounded-3xl p-5 shadow-sm border flex flex-col justify-between gap-4 transition-all duration-200 hover:shadow-md ${
+                            className={`bg-surface-container-lowest rounded-3xl p-4 sm:p-5 shadow-sm border flex flex-col justify-between gap-4 overflow-hidden max-w-full transition-all duration-200 hover:shadow-md ${
                               isSelected
                                 ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
                                 : 'border-surface-container-high hover:border-primary/40'
@@ -3999,26 +3999,30 @@ export default function SalAppPage() {
                             </div>
 
                             {/* Card Footer Actions */}
-                            <div className="flex items-center justify-between pt-3 border-t border-surface-container-high gap-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-3 border-t border-surface-container-high gap-2">
                               {/* Tombol Presentasi Slide Ini di Smart TV */}
                               <button
                                 type="button"
                                 onClick={() => {
+                                  setTvDivisiFilter('');
+                                  setTvPeriodeFilter('');
+                                  setTvSectionFilter('all');
                                   setTvSlideIndex(idx);
                                   setTvPresentationOpen(true);
                                 }}
-                                className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                                className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95 cursor-pointer shrink-0"
                                 title="Buka slide ini langsung di Mode Smart TV"
                               >
                                 <Tv size={14} />
                                 <span>Presentasikan di TV</span>
                               </button>
 
-                              <div className="flex items-center gap-1.5">
+                              {/* Action Buttons: Detail, Edit, Hapus (Responsive Grid on Mobile) */}
+                              <div className="grid grid-cols-3 sm:flex sm:items-center gap-1.5 w-full sm:w-auto">
                                 <button
                                   type="button"
                                   onClick={() => setModalDetailLaporan({ open: true, item })}
-                                  className="px-3 py-2 rounded-xl bg-primary-fixed text-primary hover:bg-primary-container hover:text-white text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                                  className="px-2.5 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
                                   title="Lihat Detail Lengkap"
                                 >
                                   <Eye size={14} />
@@ -4027,7 +4031,7 @@ export default function SalAppPage() {
                                 <button
                                   type="button"
                                   onClick={() => setModalEditLaporan({ open: true, item })}
-                                  className="px-3 py-2 rounded-xl bg-surface-container text-on-surface-variant hover:text-primary text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                                  className="px-2.5 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-primary text-xs font-bold transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
                                   title="Edit Laporan"
                                 >
                                   <Edit size={14} />
@@ -4036,7 +4040,7 @@ export default function SalAppPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteLaporan(item)}
-                                  className="px-3 py-2 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center gap-1 active:scale-95"
+                                  className="px-2.5 py-2 rounded-xl bg-error-container text-error hover:bg-red-200 text-xs font-bold transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
                                   title="Hapus Laporan"
                                 >
                                   <Trash2 size={14} />
