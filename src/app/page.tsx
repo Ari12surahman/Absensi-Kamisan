@@ -130,14 +130,96 @@ export default function SalAppPage() {
   const [lapDivisi, setLapDivisi] = useState('');
   const [lapPelapor, setLapPelapor] = useState('');
   const [lapPeriode, setLapPeriode] = useState('Pekan 1');
-  const [lapHasil, setLapHasil] = useState('');
-  const [lapProker, setLapProker] = useState('');
-  const [lapEvaluasi, setLapEvaluasi] = useState('');
-  const [budgetExpense, setBudgetExpense] = useState('');
+
+  // Multi-item Repeaters for Sections 1, 2, 3
+  const [lapHasilList, setLapHasilList] = useState<string[]>(['']);
+  const [lapProkerList, setLapProkerList] = useState<string[]>(['']);
+  const [lapEvaluasiList, setLapEvaluasiList] = useState<string[]>(['']);
+
+  // Multi-item Repeater for Section 4: Anggaran & Kas
+  const [budgetItems, setBudgetItems] = useState<{ id: string; keperluan: string; nominal: string }[]>([
+    { id: '1', keperluan: '', nominal: '' },
+  ]);
   const [budgetBalance, setBudgetBalance] = useState('');
   const [budgetNote, setBudgetNote] = useState('');
   const [autoSyncSheet, setAutoSyncSheet] = useState(true);
   const [submittingLaporan, setSubmittingLaporan] = useState(false);
+
+  // Currency and Number Helpers
+  const formatRupiahInput = (val: string) => {
+    const raw = (val || '').replace(/[^0-9]/g, '');
+    if (!raw) return '';
+    return new Intl.NumberFormat('id-ID').format(parseInt(raw, 10));
+  };
+
+  const parseRupiahNumber = (val: string) => {
+    const clean = (val || '').replace(/[^0-9]/g, '');
+    return clean ? parseInt(clean, 10) : 0;
+  };
+
+  const formatNumberId = (num: number) => {
+    return new Intl.NumberFormat('id-ID').format(num || 0);
+  };
+
+  // Total Pengeluaran Anggaran
+  const totalPengeluaranNominal = useMemo(() => {
+    return budgetItems.reduce((acc, it) => acc + parseRupiahNumber(it.nominal), 0);
+  }, [budgetItems]);
+
+  // Handlers for Repeaters
+  const addHasilItem = () => setLapHasilList(prev => [...prev, '']);
+  const updateHasilItem = (index: number, val: string) => {
+    setLapHasilList(prev => {
+      const copy = [...prev];
+      copy[index] = val;
+      return copy;
+    });
+  };
+  const removeHasilItem = (index: number) => {
+    setLapHasilList(prev => (prev.length > 1 ? prev.filter((_, i) => i !== index) : ['']));
+  };
+
+  const addProkerItem = () => setLapProkerList(prev => [...prev, '']);
+  const updateProkerItem = (index: number, val: string) => {
+    setLapProkerList(prev => {
+      const copy = [...prev];
+      copy[index] = val;
+      return copy;
+    });
+  };
+  const removeProkerItem = (index: number) => {
+    setLapProkerList(prev => (prev.length > 1 ? prev.filter((_, i) => i !== index) : ['']));
+  };
+
+  const addEvaluasiItem = () => setLapEvaluasiList(prev => [...prev, '']);
+  const updateEvaluasiItem = (index: number, val: string) => {
+    setLapEvaluasiList(prev => {
+      const copy = [...prev];
+      copy[index] = val;
+      return copy;
+    });
+  };
+  const removeEvaluasiItem = (index: number) => {
+    setLapEvaluasiList(prev => (prev.length > 1 ? prev.filter((_, i) => i !== index) : ['']));
+  };
+
+  const addBudgetItem = () => {
+    setBudgetItems(prev => [...prev, { id: Date.now().toString() + Math.random(), keperluan: '', nominal: '' }]);
+  };
+  const updateBudgetItem = (index: number, field: 'keperluan' | 'nominal', val: string) => {
+    setBudgetItems(prev => {
+      const copy = [...prev];
+      if (field === 'nominal') {
+        copy[index] = { ...copy[index], nominal: formatRupiahInput(val) };
+      } else {
+        copy[index] = { ...copy[index], keperluan: val };
+      }
+      return copy;
+    });
+  };
+  const removeBudgetItem = (index: number) => {
+    setBudgetItems(prev => (prev.length > 1 ? prev.filter((_, i) => i !== index) : [{ id: Date.now().toString(), keperluan: '', nominal: '' }]));
+  };
 
   // Login Admin State
   const [adminPass, setAdminPass] = useState('');
@@ -1303,7 +1385,47 @@ export default function SalAppPage() {
     }
 
     setSubmittingLaporan(true);
-    const combinedBudget = `Pengeluaran: Rp ${budgetExpense || '0'} | Saldo: Rp ${budgetBalance || '0'}${budgetNote ? ' (' + budgetNote + ')' : ''}`;
+
+    // Format Capaian / Hasil
+    const validHasil = lapHasilList.map(h => h.trim()).filter(Boolean);
+    const combinedHasil = validHasil.length > 1
+      ? validHasil.map((h, i) => `${i + 1}. ${h}`).join('\n')
+      : (validHasil[0] || '-');
+
+    // Format Proker
+    const validProker = lapProkerList.map(p => p.trim()).filter(Boolean);
+    const combinedProker = validProker.length > 1
+      ? validProker.map((p, i) => `${i + 1}. ${p}`).join('\n')
+      : (validProker[0] || '-');
+
+    // Format Evaluasi
+    const validEvaluasi = lapEvaluasiList.map(e => e.trim()).filter(Boolean);
+    const combinedEvaluasi = validEvaluasi.length > 1
+      ? validEvaluasi.map((e, i) => `${i + 1}. ${e}`).join('\n')
+      : (validEvaluasi[0] || '-');
+
+    // Format Anggaran / Kas
+    const validBudgets = budgetItems
+      .filter(b => b.keperluan.trim() || b.nominal.trim())
+      .map(b => `${b.keperluan.trim() || 'Pos Belanja'}: Rp ${b.nominal.trim() || '0'}`);
+
+    let combinedBudget = '';
+    const totalExpStr = formatNumberId(totalPengeluaranNominal);
+    if (validBudgets.length > 0) {
+      const itemsDetail = validBudgets.map((b, i) => `${i + 1}) ${b}`).join(', ');
+      combinedBudget = `Total Pengeluaran: Rp ${totalExpStr} [${itemsDetail}]`;
+    } else {
+      combinedBudget = totalPengeluaranNominal > 0
+        ? `Total Pengeluaran: Rp ${totalExpStr}`
+        : 'Pengeluaran: Rp 0';
+    }
+
+    if (budgetBalance.trim()) {
+      combinedBudget += ` | Sisa Saldo: Rp ${budgetBalance.trim()}`;
+    }
+    if (budgetNote.trim()) {
+      combinedBudget += ` (${budgetNote.trim()})`;
+    }
 
     try {
       const res = await fetch('/api/laporan', {
@@ -1313,9 +1435,9 @@ export default function SalAppPage() {
           divisi: lapDivisi,
           namaPelapor: lapPelapor.trim(),
           periode: lapPeriode,
-          hasilUsaha: lapHasil.trim() || '-',
-          programKerja: lapProker.trim() || '-',
-          evaluasi: lapEvaluasi.trim() || '-',
+          hasilUsaha: combinedHasil,
+          programKerja: combinedProker,
+          evaluasi: combinedEvaluasi,
           laporanDana: combinedBudget,
         }),
       });
@@ -1329,9 +1451,9 @@ export default function SalAppPage() {
           divisi: lapDivisi,
           namaPelapor: lapPelapor.trim(),
           periode: lapPeriode,
-          hasilUsaha: lapHasil.trim() || '-',
-          programKerja: lapProker.trim() || '-',
-          evaluasi: lapEvaluasi.trim() || '-',
+          hasilUsaha: combinedHasil,
+          programKerja: combinedProker,
+          evaluasi: combinedEvaluasi,
           laporanDana: combinedBudget,
         };
         const customLap = getStoredList<LaporanItem>('salapp_custom_laporan');
@@ -1339,10 +1461,10 @@ export default function SalAppPage() {
         saveStoredList('salapp_custom_laporan', customLap);
         setLaporanList(prev => [newLap, ...prev]);
 
-        setLapHasil('');
-        setLapProker('');
-        setLapEvaluasi('');
-        setBudgetExpense('');
+        setLapHasilList(['']);
+        setLapProkerList(['']);
+        setLapEvaluasiList(['']);
+        setBudgetItems([{ id: Date.now().toString(), keperluan: '', nominal: '' }]);
         setBudgetBalance('');
         setBudgetNote('');
         fetchLaporanData();
@@ -1916,79 +2038,259 @@ export default function SalAppPage() {
                     </div>
                   </div>
 
-                  {/* Hasil Usaha & Capaian */}
-                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-2">
-                    <label className="text-xs font-bold text-on-surface">1. Hasil Kerja &amp; Capaian Selesai</label>
-                    <textarea
-                      rows={3}
-                      value={lapHasil}
-                      onChange={e => setLapHasil(e.target.value)}
-                      placeholder="Rangkum hasil kerja selesai pekan ini, halaqah terlaksana, target tercapai..."
-                      className="w-full bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition resize-y"
-                    ></textarea>
-                  </div>
-
-                  {/* Proker Pekan Depan */}
-                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-2">
-                    <label className="text-xs font-bold text-on-surface">2. Program Kerja Tindak Lanjut Pekan Depan</label>
-                    <textarea
-                      rows={2}
-                      value={lapProker}
-                      onChange={e => setLapProker(e.target.value)}
-                      placeholder="Rencana tindak lanjut pekan berikutnya..."
-                      className="w-full bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition resize-y"
-                    ></textarea>
-                  </div>
-
-                  {/* Hambatan / Evaluasi */}
-                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-2">
-                    <label className="text-xs font-bold text-on-surface">3. Evaluasi &amp; Kendala</label>
-                    <textarea
-                      rows={2}
-                      value={lapEvaluasi}
-                      onChange={e => setLapEvaluasi(e.target.value)}
-                      placeholder="Catatan kendala teknis atau kebutuhan koordinasi..."
-                      className="w-full bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition resize-y"
-                    ></textarea>
-                  </div>
-
-                  {/* Anggaran & Kas */}
+                  {/* 1. Hasil Kerja & Capaian */}
                   <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-3">
-                    <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                      <DollarSign size={16} className="text-primary" />
-                      <span>4. Laporan Anggaran &amp; Kas Divisi</span>
-                    </label>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <span className="text-[10px] text-on-surface-variant font-bold block mb-1">Pengeluaran (Rp)</span>
-                        <input
-                          type="text"
-                          value={budgetExpense}
-                          onChange={e => setBudgetExpense(e.target.value)}
-                          placeholder="0"
-                          className="w-full bg-surface-container-low text-on-surface text-xs font-semibold rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-on-surface-variant font-bold block mb-1">Sisa Saldo Kas (Rp)</span>
-                        <input
-                          type="text"
-                          value={budgetBalance}
-                          onChange={e => setBudgetBalance(e.target.value)}
-                          placeholder="0"
-                          className="w-full bg-surface-container-low text-on-surface text-xs font-semibold rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition"
-                        />
-                      </div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                        <CheckCircle size={15} className="text-primary" />
+                        <span>1. Hasil Kerja &amp; Capaian Selesai</span>
+                      </label>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                        {lapHasilList.length} Poin
+                      </span>
                     </div>
 
-                    <input
-                      type="text"
-                      value={budgetNote}
-                      onChange={e => setBudgetNote(e.target.value)}
-                      placeholder="Catatan singkat (misal: konsumsi pengajian, atk halaqah)..."
-                      className="w-full bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition"
-                    />
+                    <div className="space-y-2">
+                      {lapHasilList.map((item, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center font-bold text-[10px] shrink-0 mt-2">
+                            {idx + 1}
+                          </span>
+                          <textarea
+                            rows={2}
+                            value={item}
+                            onChange={e => updateHasilItem(idx, e.target.value)}
+                            placeholder={`Poin capaian ke-${idx + 1} (misal: Halaqah terlaksana 100%, 18 asatidz hadir)...`}
+                            className="flex-1 bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition resize-y"
+                          ></textarea>
+                          {lapHasilList.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeHasilItem(idx)}
+                              className="w-7 h-7 rounded-xl bg-error/10 hover:bg-error/20 text-error flex items-center justify-center shrink-0 mt-2 transition"
+                              title="Hapus poin ini"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={addHasilItem}
+                      className="w-full py-2.5 rounded-2xl bg-surface-container-low hover:bg-surface-container text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition border border-dashed border-primary/30 active:scale-95"
+                    >
+                      <Plus size={14} />
+                      <span>Tambah Poin Hasil Kerja</span>
+                    </button>
+                  </div>
+
+                  {/* 2. Proker Pekan Depan */}
+                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                        <Calendar size={15} className="text-primary" />
+                        <span>2. Program Kerja Tindak Lanjut Pekan Depan</span>
+                      </label>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                        {lapProkerList.length} Poin
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {lapProkerList.map((item, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center font-bold text-[10px] shrink-0 mt-2">
+                            {idx + 1}
+                          </span>
+                          <textarea
+                            rows={2}
+                            value={item}
+                            onChange={e => updateProkerItem(idx, e.target.value)}
+                            placeholder={`Rencana tindak lanjut ke-${idx + 1}...`}
+                            className="flex-1 bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition resize-y"
+                          ></textarea>
+                          {lapProkerList.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeProkerItem(idx)}
+                              className="w-7 h-7 rounded-xl bg-error/10 hover:bg-error/20 text-error flex items-center justify-center shrink-0 mt-2 transition"
+                              title="Hapus poin ini"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={addProkerItem}
+                      className="w-full py-2.5 rounded-2xl bg-surface-container-low hover:bg-surface-container text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition border border-dashed border-primary/30 active:scale-95"
+                    >
+                      <Plus size={14} />
+                      <span>Tambah Poin Program Kerja</span>
+                    </button>
+                  </div>
+
+                  {/* 3. Hambatan / Evaluasi */}
+                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                        <AlertTriangle size={15} className="text-amber-500" />
+                        <span>3. Evaluasi &amp; Kendala</span>
+                      </label>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
+                        {lapEvaluasiList.length} Poin
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {lapEvaluasiList.map((item, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center font-bold text-[10px] shrink-0 mt-2">
+                            {idx + 1}
+                          </span>
+                          <textarea
+                            rows={2}
+                            value={item}
+                            onChange={e => updateEvaluasiItem(idx, e.target.value)}
+                            placeholder={`Catatan kendala teknis atau kebutuhan koordinasi ke-${idx + 1}...`}
+                            className="flex-1 bg-surface-container-low text-on-surface text-xs font-medium rounded-2xl p-3 focus:outline-none focus:bg-surface-container border border-transparent focus:border-primary transition resize-y"
+                          ></textarea>
+                          {lapEvaluasiList.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeEvaluasiItem(idx)}
+                              className="w-7 h-7 rounded-xl bg-error/10 hover:bg-error/20 text-error flex items-center justify-center shrink-0 mt-2 transition"
+                              title="Hapus poin ini"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={addEvaluasiItem}
+                      className="w-full py-2.5 rounded-2xl bg-surface-container-low hover:bg-surface-container text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition border border-dashed border-primary/30 active:scale-95"
+                    >
+                      <Plus size={14} />
+                      <span>Tambah Poin Evaluasi / Kendala</span>
+                    </button>
+                  </div>
+
+                  {/* 4. Anggaran & Kas (Repeater Pos Pengeluaran) */}
+                  <div className="p-4 rounded-3xl bg-surface-container-lowest border border-surface-container-high shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                        <DollarSign size={16} className="text-primary" />
+                        <span>4. Rincian Anggaran &amp; Realisasi Kas</span>
+                      </label>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold">
+                        {budgetItems.length} Pos Pengeluaran
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {budgetItems.map((item, idx) => (
+                        <div key={item.id || idx} className="p-3 rounded-2xl bg-surface-container-low/70 border border-surface-container-high/60 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-on-surface-variant flex items-center gap-1">
+                              <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-bold">
+                                {idx + 1}
+                              </span>
+                              <span>Pos Pengeluaran #{idx + 1}</span>
+                            </span>
+                            {budgetItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeBudgetItem(idx)}
+                                className="text-error hover:text-red-700 text-[11px] font-bold flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-error/10 transition"
+                              >
+                                <Trash2 size={12} />
+                                <span>Hapus Pos</span>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div className="sm:col-span-2">
+                              <input
+                                type="text"
+                                value={item.keperluan}
+                                onChange={e => updateBudgetItem(idx, 'keperluan', e.target.value)}
+                                placeholder="Uraian belanja (misal: Konsumsi rapat, ATK, Transport)..."
+                                className="w-full bg-surface-container-lowest text-on-surface text-xs font-medium rounded-xl p-2.5 focus:outline-none focus:bg-white border border-surface-container-high focus:border-primary transition"
+                              />
+                            </div>
+                            <div>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-on-surface-variant">Rp</span>
+                                <input
+                                  type="text"
+                                  value={item.nominal}
+                                  onChange={e => updateBudgetItem(idx, 'nominal', e.target.value)}
+                                  placeholder="0"
+                                  className="w-full bg-surface-container-lowest text-on-surface text-xs font-bold rounded-xl py-2.5 pl-8 pr-2.5 focus:outline-none focus:bg-white border border-surface-container-high focus:border-primary transition text-right font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Tombol Tambah Pos Pengeluaran */}
+                    <button
+                      type="button"
+                      onClick={addBudgetItem}
+                      className="w-full py-2.5 rounded-2xl bg-primary/5 hover:bg-primary/10 text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition border border-dashed border-primary/40 active:scale-95"
+                    >
+                      <Plus size={14} />
+                      <span>+ Tambah Pos Pengeluaran</span>
+                    </button>
+
+                    {/* Ringkasan Keuangan (Total & Saldo) */}
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200/80 space-y-3 mt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-purple-900">Total Pengeluaran:</span>
+                        <span className="text-sm font-bold font-mono text-purple-950 bg-white px-3 py-1 rounded-xl shadow-xs border border-purple-200">
+                          Rp {formatNumberId(totalPengeluaranNominal)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-purple-200/60">
+                        <div>
+                          <span className="text-[10px] text-purple-800 font-bold block mb-1">Sisa Saldo Kas Divisi (Rp)</span>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-purple-700">Rp</span>
+                            <input
+                              type="text"
+                              value={budgetBalance}
+                              onChange={e => setBudgetBalance(formatRupiahInput(e.target.value))}
+                              placeholder="0"
+                              className="w-full bg-white text-on-surface text-xs font-bold rounded-xl py-2 pl-8 pr-2.5 focus:outline-none border border-purple-200 focus:border-primary transition text-right font-mono"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-purple-800 font-bold block mb-1">Catatan Kas / Keterangan</span>
+                          <input
+                            type="text"
+                            value={budgetNote}
+                            onChange={e => setBudgetNote(e.target.value)}
+                            placeholder="Misal: Saldo disimpan bendahara..."
+                            className="w-full bg-white text-on-surface text-xs font-medium rounded-xl p-2 focus:outline-none border border-purple-200 focus:border-primary transition"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Submit Button */}
@@ -4362,22 +4664,22 @@ export default function SalAppPage() {
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
               <div className="p-3.5 rounded-2xl bg-surface-container-low border border-surface-container-high">
                 <span className="text-[11px] font-bold text-on-surface-variant block mb-1">1. Hasil Usaha &amp; Capaian:</span>
-                <p className="text-xs text-on-surface font-medium leading-relaxed">{modalDetailLaporan.item.hasilUsaha}</p>
+                <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-line">{modalDetailLaporan.item.hasilUsaha}</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-surface-container-low border border-surface-container-high">
                 <span className="text-[11px] font-bold text-on-surface-variant block mb-1">2. Program Kerja Pekan Depan:</span>
-                <p className="text-xs text-on-surface font-medium leading-relaxed">{modalDetailLaporan.item.programKerja}</p>
+                <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-line">{modalDetailLaporan.item.programKerja}</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-surface-container-low border border-surface-container-high">
                 <span className="text-[11px] font-bold text-on-surface-variant block mb-1">3. Evaluasi &amp; Kendala:</span>
-                <p className="text-xs text-on-surface font-medium leading-relaxed">{modalDetailLaporan.item.evaluasi}</p>
+                <p className="text-xs text-on-surface font-medium leading-relaxed whitespace-pre-line">{modalDetailLaporan.item.evaluasi}</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200">
                 <span className="text-[11px] font-bold text-purple-800 block mb-1">4. Laporan Dana &amp; Realisasi Kas:</span>
-                <p className="text-xs text-purple-950 font-bold font-mono">{modalDetailLaporan.item.laporanDana}</p>
+                <p className="text-xs text-purple-950 font-bold font-mono whitespace-pre-line">{modalDetailLaporan.item.laporanDana}</p>
               </div>
             </div>
 
@@ -4699,11 +5001,12 @@ export default function SalAppPage() {
 
               <div>
                 <label className="block text-xs font-bold text-on-surface mb-1">Laporan Anggaran &amp; Kas</label>
-                <input
+                <textarea
                   name="laporanDana"
+                  rows={3}
                   defaultValue={modalEditLaporan.item.laporanDana}
                   placeholder="Pengeluaran: Rp ... | Saldo: Rp ..."
-                  className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low"
+                  className="w-full border border-surface-container-high rounded-xl p-2.5 text-xs outline-none focus:border-primary bg-surface-container-low resize-y"
                 />
               </div>
 
