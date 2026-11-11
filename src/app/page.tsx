@@ -94,8 +94,10 @@ export default function SalAppPage() {
   // Filters & Search
   const [filterAcaraAdmin, setFilterAcaraAdmin] = useState('');
   const [searchAbsensiAdmin, setSearchAbsensiAdmin] = useState('');
+  const [searchAcaraAdmin, setSearchAcaraAdmin] = useState('');
   const [searchAsatidzAdmin, setSearchAsatidzAdmin] = useState('');
   const [filterDivisiAdmin, setFilterDivisiAdmin] = useState('');
+  const [searchDivisiAdmin, setSearchDivisiAdmin] = useState('');
   const [searchLaporanAdmin, setSearchLaporanAdmin] = useState('');
 
   // Bulk Delete Selection States
@@ -1641,6 +1643,36 @@ export default function SalAppPage() {
 
   const totalPagesAsatidz = Math.ceil((filteredAsatidz?.length || 0) / PAGE_SIZE) || 1;
 
+  const filteredAcara = useMemo(() => {
+    let list = (acaraList || []).filter(Boolean);
+    if (searchAcaraAdmin.trim()) {
+      const q = searchAcaraAdmin.toLowerCase();
+      list = list.filter(
+        a =>
+          (a?.namaAcara && a.namaAcara.toLowerCase().includes(q)) ||
+          (a?.tanggalAcara && a.tanggalAcara.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [acaraList, searchAcaraAdmin]);
+
+  const totalPagesAcara = Math.ceil((filteredAcara?.length || 0) / PAGE_SIZE) || 1;
+
+  const filteredDivisi = useMemo(() => {
+    let list = (divisiList || []).filter(Boolean);
+    if (searchDivisiAdmin.trim()) {
+      const q = searchDivisiAdmin.toLowerCase();
+      list = list.filter(
+        d =>
+          (d?.namaDivisi && d.namaDivisi.toLowerCase().includes(q)) ||
+          (d?.keterangan && d.keterangan.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [divisiList, searchDivisiAdmin]);
+
+  const totalPagesDivisi = Math.ceil((filteredDivisi?.length || 0) / PAGE_SIZE) || 1;
+
   // Paginated Items
   const paginatedAbsensi = useMemo(() => {
     const start = (pageAbsensi - 1) * PAGE_SIZE;
@@ -1649,8 +1681,8 @@ export default function SalAppPage() {
 
   const paginatedAcara = useMemo(() => {
     const start = (pageAcara - 1) * PAGE_SIZE;
-    return (acaraList || []).filter(Boolean).slice(start, start + PAGE_SIZE);
-  }, [acaraList, pageAcara]);
+    return (filteredAcara || []).slice(start, start + PAGE_SIZE);
+  }, [filteredAcara, pageAcara]);
 
   const paginatedAsatidz = useMemo(() => {
     const start = (pageAsatidz - 1) * PAGE_SIZE;
@@ -1664,8 +1696,8 @@ export default function SalAppPage() {
 
   const paginatedDivisi = useMemo(() => {
     const start = (pageDivisi - 1) * PAGE_SIZE;
-    return (divisiList || []).filter(Boolean).slice(start, start + PAGE_SIZE);
-  }, [divisiList, pageDivisi]);
+    return (filteredDivisi || []).slice(start, start + PAGE_SIZE);
+  }, [filteredDivisi, pageDivisi]);
 
   // Format ID Helper
   const formatIndex = (idx: number) => String(idx).padStart(2, '0');
@@ -3127,6 +3159,28 @@ export default function SalAppPage() {
                     </div>
                   </div>
 
+                  {/* Search Bar & Summary for Acara */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-surface-container-lowest p-4 rounded-3xl border border-surface-container-high shadow-xs">
+                    <div className="relative w-full sm:w-80">
+                      <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                      <input
+                        type="text"
+                        value={searchAcaraAdmin}
+                        onChange={e => {
+                          setSearchAcaraAdmin(e.target.value);
+                          setPageAcara(1);
+                        }}
+                        placeholder="Cari nama agenda acara atau tanggal..."
+                        className="w-full bg-surface-container-low text-xs rounded-2xl pl-10 pr-4 py-2.5 outline-none focus:border-primary border border-transparent font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-on-surface-variant bg-surface-container-low px-3.5 py-2 rounded-2xl border border-surface-container-high">
+                        Total: <strong className="text-primary">{filteredAcara.length}</strong> Agenda Acara
+                      </span>
+                    </div>
+                  </div>
+
                   {/* MOBILE VIEW: Cards for Acara (block md:hidden) */}
                   <div className="space-y-3 block md:hidden">
                     {/* Mobile Bulk Selection Bar */}
@@ -3235,6 +3289,33 @@ export default function SalAppPage() {
                         </div>
                       ))
                     )}
+
+                    {/* Mobile Pagination Acara */}
+                    {totalPagesAcara > 1 && (
+                      <div className="flex justify-between items-center bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                        <span>
+                          Hal {pageAcara} dari {totalPagesAcara}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pageAcara === 1}
+                            onClick={() => setPageAcara(prev => Math.max(1, prev - 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pageAcara === totalPagesAcara}
+                            onClick={() => setPageAcara(prev => Math.min(totalPagesAcara, prev + 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* DESKTOP VIEW: Table Acara (hidden md:block) */}
@@ -3288,7 +3369,9 @@ export default function SalAppPage() {
                                 className="w-4 h-4 rounded text-primary focus:ring-primary border-surface-container-high cursor-pointer"
                               />
                             </td>
-                            <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
+                            <td className="p-4 text-center font-bold text-on-surface-variant">
+                              {formatIndex((pageAcara - 1) * PAGE_SIZE + idx + 1)}
+                            </td>
                             <td className="p-4 font-bold text-on-surface text-xs sm:text-sm whitespace-nowrap">{item.namaAcara}</td>
                             <td className="p-4 text-xs font-medium text-on-surface-variant whitespace-nowrap">{item.tanggalAcara}</td>
                             <td className="p-4 text-center whitespace-nowrap">
@@ -3334,6 +3417,33 @@ export default function SalAppPage() {
                         ))}
                       </tbody>
                     </table>
+
+                    {/* Desktop Pagination Acara */}
+                    {totalPagesAcara > 1 && (
+                      <div className="p-4 border-t border-surface-container-high flex justify-between items-center text-xs font-bold text-on-surface-variant">
+                        <span>
+                          Halaman {pageAcara} dari {totalPagesAcara}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pageAcara === 1}
+                            onClick={() => setPageAcara(prev => Math.max(1, prev - 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pageAcara === totalPagesAcara}
+                            onClick={() => setPageAcara(prev => Math.min(totalPagesAcara, prev + 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -4197,6 +4307,28 @@ export default function SalAppPage() {
                     </div>
                   </div>
 
+                  {/* Search Bar & Summary for Divisi */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-surface-container-lowest p-4 rounded-3xl border border-surface-container-high shadow-xs">
+                    <div className="relative w-full sm:w-80">
+                      <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                      <input
+                        type="text"
+                        value={searchDivisiAdmin}
+                        onChange={e => {
+                          setSearchDivisiAdmin(e.target.value);
+                          setPageDivisi(1);
+                        }}
+                        placeholder="Cari nama divisi atau deskripsi peran..."
+                        className="w-full bg-surface-container-low text-xs rounded-2xl pl-10 pr-4 py-2.5 outline-none focus:border-primary border border-transparent font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-on-surface-variant bg-surface-container-low px-3.5 py-2 rounded-2xl border border-surface-container-high">
+                        Total: <strong className="text-primary">{filteredDivisi.length}</strong> Divisi
+                      </span>
+                    </div>
+                  </div>
+
                   {/* MOBILE VIEW: Cards for Divisi (block md:hidden) */}
                   <div className="space-y-3 block md:hidden">
                     {paginatedDivisi.length === 0 ? (
@@ -4217,7 +4349,7 @@ export default function SalAppPage() {
                               <div className="min-w-0">
                                 <h3 className="text-sm font-bold text-on-surface truncate leading-tight">{item.namaDivisi}</h3>
                                 <span className="text-[10px] text-on-surface-variant font-mono mt-0.5 block">
-                                  #{formatIndex(idx + 1)}
+                                  #{formatIndex((pageDivisi - 1) * PAGE_SIZE + idx + 1)}
                                 </span>
                               </div>
                             </div>
@@ -4260,6 +4392,33 @@ export default function SalAppPage() {
                         </div>
                       ))
                     )}
+
+                    {/* Mobile Pagination Divisi */}
+                    {totalPagesDivisi > 1 && (
+                      <div className="flex justify-between items-center bg-surface-container-lowest p-3 rounded-2xl border border-surface-container-high text-xs font-bold text-on-surface-variant">
+                        <span>
+                          Hal {pageDivisi} dari {totalPagesDivisi}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pageDivisi === 1}
+                            onClick={() => setPageDivisi(prev => Math.max(1, prev - 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pageDivisi === totalPagesDivisi}
+                            onClick={() => setPageDivisi(prev => Math.min(totalPagesDivisi, prev + 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* DESKTOP VIEW: Table Divisi (hidden md:block) */}
@@ -4277,7 +4436,9 @@ export default function SalAppPage() {
                       <tbody className="text-xs divide-y divide-surface-container-high">
                         {paginatedDivisi.map((item, idx) => (
                           <tr key={item.id || idx} className="hover:bg-surface-container-low transition-colors">
-                            <td className="p-4 text-center font-bold text-on-surface-variant">{formatIndex(idx + 1)}</td>
+                            <td className="p-4 text-center font-bold text-on-surface-variant">
+                              {formatIndex((pageDivisi - 1) * PAGE_SIZE + idx + 1)}
+                            </td>
                             <td className="p-4 whitespace-nowrap font-bold text-on-surface">{item.namaDivisi}</td>
                             <td className="p-4 text-xs text-on-surface-variant font-medium">{item.keterangan || '-'}</td>
                             <td className="p-4 text-center whitespace-nowrap">
@@ -4312,6 +4473,33 @@ export default function SalAppPage() {
                         ))}
                       </tbody>
                     </table>
+
+                    {/* Desktop Pagination Divisi */}
+                    {totalPagesDivisi > 1 && (
+                      <div className="p-4 border-t border-surface-container-high flex justify-between items-center text-xs font-bold text-on-surface-variant">
+                        <span>
+                          Halaman {pageDivisi} dari {totalPagesDivisi}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pageDivisi === 1}
+                            onClick={() => setPageDivisi(prev => Math.max(1, prev - 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pageDivisi === totalPagesDivisi}
+                            onClick={() => setPageDivisi(prev => Math.min(totalPagesDivisi, prev + 1))}
+                            className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high disabled:opacity-40 transition"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
